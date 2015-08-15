@@ -13,6 +13,8 @@ module Control.Foldl.Transduce (
     ) where
 
 import Data.Bifunctor
+import Data.Foldable (foldrM)
+import Control.Monad
 import Control.Foldl (Fold(..),FoldM(..))
 import qualified Control.Foldl as L
 
@@ -50,10 +52,18 @@ transducer' f (Wrap wstep wstate wdone) (Fold fstep fstate fdone) =
 
 
 transducerM :: Monad m => WrapM m i o r -> TransducerM m i o 
-transducerM = undefined
+transducerM = transducerM' (flip const)
 
-transducerM' :: (x -> y -> z) -> WrapM m i o x -> FoldM m o y -> FoldM m i z
-transducerM' = undefined
+transducerM' :: Monad m => (x -> y -> z) -> WrapM m i o x -> FoldM m o y -> FoldM m i z
+transducerM' f (WrapM wstep wstate wdone) (FoldM fstep fstate fdone) =
+    FoldM step (liftM2 Pair wstate fstate) done 
+        where
+            step (Pair ws fs) i = do
+                (ws',os) <- wstep ws i
+                liftM (Pair ws') (foldrM (flip fstep) fs os)
+            done (Pair ws fs) = do
+                (wr,os) <- wdone ws
+                liftM (f wr) (fdone =<< foldrM (flip fstep) fs os)
 
 data Pair a b = Pair !a !b
 
