@@ -28,11 +28,21 @@ data Wrap i o r
 instance Functor (Wrap i o) where
     fmap f (Wrap step begin done) = Wrap step begin (first f . done)
 
+instance Bifunctor (Wrap i) where
+    first f (Wrap step begin done) =
+        Wrap (fmap (fmap (fmap f)) . step) begin (fmap (fmap f) . done)
+    second f w = fmap f w
+
 data WrapM m i o r
      = forall x. WrapM (x -> i -> m (x,[o])) (m x) (x -> m (r,[o]))
 
 instance Functor m => Functor (WrapM m i o) where
     fmap f (WrapM step begin done) = WrapM step begin (fmap (first f) . done)
+
+instance Functor m => Bifunctor (WrapM m i) where
+    first f (WrapM step begin done) =
+        WrapM (fmap (fmap (fmap (fmap f))) . step) begin (fmap (fmap (fmap f)) . done)
+    second f w = fmap f w
 
 transducer :: Wrap i o r -> Transducer i o 
 transducer = transducer' (flip const) 
