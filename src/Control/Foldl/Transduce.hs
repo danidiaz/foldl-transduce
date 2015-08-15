@@ -14,6 +14,7 @@ module Control.Foldl.Transduce (
     ,   simplifyWrap
     ,   foldify
     ,   foldifyM
+    ,   chunksOf
     ,   module Control.Foldl
     ) where
 
@@ -108,3 +109,17 @@ foldifyM :: Functor m => WrapM m i o r -> FoldM m i r
 foldifyM (WrapM step begin done) =
     FoldM (\x i -> fmap fst (step x i)) begin (\x -> fmap fst (done x))
 
+chunksOf :: Int -> Transducer a [a]
+chunksOf groupSize = transducer $ 
+    Wrap step (Pair 0 []) done 
+    where
+        step (Pair i as) a = 
+            let i' = succ i 
+                as' = a:as
+            in
+            if (i' == groupSize)
+               then (Pair 0 [], [reverse as'])
+               else (Pair i' as', [])
+
+        done (Pair _ []) = ((), [])
+        done (Pair _ as) = ((), [reverse as])
