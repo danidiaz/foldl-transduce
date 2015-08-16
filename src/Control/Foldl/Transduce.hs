@@ -123,18 +123,30 @@ foldifyM (WrapM step begin done) =
 -- When there's no maybe, no change of is required
 data Snoc i = Snoc (Maybe (Snoc i)) i
 
+foldrsnoc :: (a -> b -> b) -> b -> Snoc a -> b
+foldrsnoc f b sn = go sn b  
+    where
+        go (Snoc Nothing a) b' = f a b'
+        go (Snoc (Just sn') a) b' = go sn' (f a b')
+
 data Splitter i
      = forall x. Splitter (x -> i -> (x,Snoc [i])) x (x -> [i])
 
 -- you can pass "prefix" as the transducer, for example...
 pregroup :: Splitter i -> Transducer i b -> Transducer i b 
-pregroup (Splitter sstep sbegin sdone) t (duplicate -> (Fold fstep fbegin fdone)) =
-    Fold step (Pair sbegin fbegin) done 
-        where
-            step = undefined
-            begin = undefined
-            done (Pair ss fs) = 
-                extract (fdone (foldr (flip fstep) fs (sdone ss)))
+pregroup (Splitter sstep sbegin sdone) t f =
+    case t (duplicate f) of 
+        Fold fstep fbegin fdone ->
+            let 
+                step (Pair ss fs) i = 
+                    let (ss', sn) = sstep ss i
+                    in
+                    -- still needs work
+                    Pair ss' (foldrsnoc (\is sn' -> foldr (flip fstep) sn' is) fs sn)  
+                done (Pair ss fs) = 
+                    extract (fdone (foldr (flip fstep) fs (sdone ss)))
+            in 
+            Fold step (Pair sbegin fbegin) done 
 
 -- condense?
 
