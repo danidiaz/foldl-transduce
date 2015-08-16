@@ -14,13 +14,13 @@ module Control.Foldl.Transduce (
     ,   simplify'
     ,   foldify
     ,   foldifyM
---    ,   chunksOf
+    ,   prefixSuffix
     ,   module Control.Foldl
     ) where
 
 import Data.Bifunctor
 import Data.Functor.Identity
-import Data.Foldable (foldrM)
+import Data.Foldable (foldrM,toList)
 import Control.Monad
 import Control.Comonad
 import Control.Foldl (Fold(..),FoldM(..))
@@ -104,8 +104,7 @@ generalize' (Wrap step begin done) = WrapM step' begin' done'
     done' x   = return (done x)
 
 simplify' :: WrapM Identity i o r -> Wrap i o r
-simplify' (WrapM step begin done) = Wrap step' begin' done'
-  where
+simplify' (WrapM step begin done) = Wrap step' begin' done' where
     step' x a = runIdentity (step x a)
     begin'    = runIdentity  begin
     done' x   = runIdentity (done x)
@@ -118,7 +117,24 @@ foldifyM :: Functor m => WrapM m i o r -> FoldM m i r
 foldifyM (WrapM step begin done) =
     FoldM (\x i -> fmap fst (step x i)) begin (\x -> fmap fst (done x))
 
+------------------------------------------------------------------------------
 
+data PrefixSuffixState = PrefixAdded | PrefixPending
+
+--  L.fold (transduce (prefixSuffix "ab" "cd") L.list) "xy"
+--  L.fold (transduce (prefixSuffix "ab" "cd") L.list) ""
+prefixSuffix :: (Foldable p, Foldable s) => p a -> s a -> Wrap a a ()
+prefixSuffix (reverse . toList -> ps) (reverse . toList -> ss) = 
+    Wrap step PrefixPending done 
+    where
+        step PrefixPending a = 
+            (PrefixAdded, [a] ++ ps)
+        step PrefixAdded a = 
+            (PrefixAdded, [a])
+        done PrefixPending = ((), ss ++ ps)
+        done PrefixAdded = ((), ss)
+
+------------------------------------------------------------------------------
 
 -- When there's no maybe, no change of is required
 data Snoc i = Snoc (Maybe (Snoc i)) i
@@ -133,23 +149,23 @@ foldrsnoc g f b sn = go sn b
 data Splitter i
      = forall x. Splitter (x -> i -> (x,Snoc [i])) x (x -> [i])
 
--- you can pass "prefix" as the transducer, for example...
-pregroup :: Splitter i -> Transducer i b -> Transducer i b 
-pregroup (Splitter sstep sbegin sdone) t f =
-    case t (duplicate f) of 
-        Fold fstep fbegin fdone ->
-            let 
-                reset fs = case t (duplicate (fdone fs)) of 
-                    Fold _ fbegin' _ -> fbegin'
-                step (Pair ss fs) i = 
-                    let (ss', sn) = sstep ss i
-                    in
-                    -- still needs work
-                    Pair ss' (foldrsnoc reset (\is sn' -> foldr (flip fstep) sn' is) fs sn)  
-                done (Pair ss fs) = 
-                    extract (fdone (foldr (flip fstep) fs (sdone ss)))
-            in 
-            Fold step (Pair sbegin fbegin) done 
+-- You can pass "prefix" as the transducer, for example...
+-- pregroup :: Splitter i -> Transducer i b -> Transducer i b 
+-- pregroup (Splitter sstep sbegin sdone) t f =
+--     case t (duplicate f) of 
+--         Fold fstep fbegin fdone ->
+--             let 
+--                 reset fs = case t (duplicate (fdone fs)) of 
+--                     Fold _ fbegin' _ -> fbegin'
+--                 step (Pair ss fs) i = 
+--                     let (ss', sn) = sstep ss i
+--                     in
+--                     -- still needs work
+--                     Pair ss' (foldrsnoc reset (\is sn' -> foldr (flip fstep) sn' is) fs sn)  
+--                 done (Pair ss fs) = 
+--                     extract (fdone (foldr (flip fstep) fs (sdone ss)))
+--             in 
+--             Fold step (Pair sbegin fbegin) done 
 
 -- condense?
 
