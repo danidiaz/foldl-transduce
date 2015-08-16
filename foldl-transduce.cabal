@@ -24,7 +24,8 @@ Library
         transformers >= 0.2.0.0  && < 0.5 ,
         containers                  < 0.6 ,
         profunctors                 < 5.2 ,
-        foldl        >= 1.1      && < 2
+        foldl        >= 1.1      && < 2   ,
+        comonad      == 4.*
     Exposed-Modules:
         Control.Foldl.Transduce,
         Control.Foldl.Transduce.Text

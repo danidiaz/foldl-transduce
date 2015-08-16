@@ -1,20 +1,20 @@
 {-# LANGUAGE ExistentialQuantification, RankNTypes #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Control.Foldl.Transduce (
         Transducer 
     ,   TransducerM
-    ,   TransducerG
     ,   Wrap(..)
     ,   WrapM(..)
-    ,   transducer
-    ,   transducer'
-    ,   transducerM
-    ,   transducerM'
-    ,   generalizeWrap
-    ,   simplifyWrap
+    ,   transduce
+    ,   transduce'
+    ,   transduceM
+    ,   transduceM'
+    ,   generalize'
+    ,   simplify'
     ,   foldify
     ,   foldifyM
-    ,   chunksOf
+--    ,   chunksOf
     ,   module Control.Foldl
     ) where
 
@@ -22,16 +22,25 @@ import Data.Bifunctor
 import Data.Functor.Identity
 import Data.Foldable (foldrM)
 import Control.Monad
+import Control.Comonad
 import Control.Foldl (Fold(..),FoldM(..))
 import qualified Control.Foldl as L
 
+
+instance Comonad (Fold a) where
+    extract (Fold _ begin done) = done begin
+    {-#  INLINABLE extract #-}
+
+    duplicate (Fold step begin done) = Fold step begin (\x -> Fold step x done)
+    {-#  INLINABLE duplicate #-}
+
 data Pair a b = Pair !a !b
 
-type Transducer a b = forall x. L.Fold b x -> L.Fold a x
+------------------------------------------------------------------------------
 
-type TransducerM m a b = forall x. Monad m => L.FoldM m b x -> L.FoldM m a x
+type Transducer a b = forall x. Fold b x -> Fold a x
 
-type TransducerG a b = forall x m. Monad m => L.FoldM m b x -> L.FoldM m a x
+type TransducerM m a b = forall x. Monad m => FoldM m b x -> FoldM m a x
 
 data Wrap i o r
      = forall x. Wrap (x -> i -> (x,[o])) x (x -> (r,[o]))
@@ -55,11 +64,11 @@ instance Functor m => Bifunctor (WrapM m i) where
         WrapM (fmap (fmap (fmap (fmap f))) . step) begin (fmap (fmap (fmap f)) . done)
     second f w = fmap f w
 
-transducer :: Wrap i o r -> Transducer i o 
-transducer = transducer' (flip const) 
+transduce :: Wrap i o r -> Transducer i o 
+transduce = transduce' (flip const) 
 
-transducer' :: (x -> y -> z) -> Wrap i o x -> Fold o y -> Fold i z
-transducer' f (Wrap wstep wstate wdone) (Fold fstep fstate fdone) =
+transduce' :: (x -> y -> z) -> Wrap i o x -> Fold o y -> Fold i z
+transduce' f (Wrap wstep wstate wdone) (Fold fstep fstate fdone) =
     Fold step (Pair wstate fstate) done 
         where
             step (Pair ws fs) i = 
@@ -72,11 +81,11 @@ transducer' f (Wrap wstep wstate wdone) (Fold fstep fstate fdone) =
                 f wr (fdone (foldr (flip fstep) fs os))
 
 
-transducerM :: Monad m => WrapM m i o r -> TransducerM m i o 
-transducerM = transducerM' (flip const)
+transduceM :: Monad m => WrapM m i o r -> TransducerM m i o 
+transduceM = transduceM' (flip const)
 
-transducerM' :: Monad m => (x -> y -> z) -> WrapM m i o x -> FoldM m o y -> FoldM m i z
-transducerM' f (WrapM wstep wstate wdone) (FoldM fstep fstate fdone) =
+transduceM' :: Monad m => (x -> y -> z) -> WrapM m i o x -> FoldM m o y -> FoldM m i z
+transduceM' f (WrapM wstep wstate wdone) (FoldM fstep fstate fdone) =
     FoldM step (liftM2 Pair wstate fstate) done 
         where
             step (Pair ws fs) i = do
@@ -87,15 +96,15 @@ transducerM' f (WrapM wstep wstate wdone) (FoldM fstep fstate fdone) =
                 liftM (f wr) (fdone =<< foldrM (flip fstep) fs os)
 
 
-generalizeWrap :: Monad m => Wrap i o r -> WrapM m i o r
-generalizeWrap (Wrap step begin done) = WrapM step' begin' done'
+generalize' :: Monad m => Wrap i o r -> WrapM m i o r
+generalize' (Wrap step begin done) = WrapM step' begin' done'
   where
     step' x a = return (step x a)
     begin'    = return  begin
     done' x   = return (done x)
 
-simplifyWrap :: WrapM Identity i o r -> Wrap i o r
-simplifyWrap (WrapM step begin done) = Wrap step' begin' done'
+simplify' :: WrapM Identity i o r -> Wrap i o r
+simplify' (WrapM step begin done) = Wrap step' begin' done'
   where
     step' x a = runIdentity (step x a)
     begin'    = runIdentity  begin
@@ -109,17 +118,37 @@ foldifyM :: Functor m => WrapM m i o r -> FoldM m i r
 foldifyM (WrapM step begin done) =
     FoldM (\x i -> fmap fst (step x i)) begin (\x -> fmap fst (done x))
 
-chunksOf :: Int -> Transducer a [a]
-chunksOf groupSize = transducer $ 
-    Wrap step (Pair 0 []) done 
-    where
-        step (Pair i as) a = 
-            let i' = succ i 
-                as' = a:as
-            in
-            if (i' == groupSize)
-               then (Pair 0 [], [reverse as'])
-               else (Pair i' as', [])
 
-        done (Pair _ []) = ((), [])
-        done (Pair _ as) = ((), [reverse as])
+
+-- When there's no maybe, no change of is required
+data Snoc i = Snoc (Maybe (Snoc i)) i
+
+data Splitter i
+     = forall x. Splitter (x -> i -> (x,Snoc [i])) x (x -> [i])
+
+-- you can pass "prefix" as the transducer, for example...
+pregroup :: Splitter i -> Transducer i b -> Transducer i b 
+pregroup (Splitter sstep sbegin sdone) t (duplicate -> (Fold fstep fbegin fdone)) =
+    Fold step (Pair sbegin fbegin) done 
+        where
+            step = undefined
+            begin = undefined
+            done (Pair ss fs) = 
+                extract (fdone (foldr (flip fstep) fs (sdone ss)))
+
+-- condense?
+
+--chunksOf :: Int -> Transducer a [a]
+--chunksOf groupSize = transduce $ 
+--    Wrap step (Pair 0 []) done 
+--    where
+--        step (Pair i as) a = 
+--            let i' = succ i 
+--                as' = a:as
+--            in
+--            if (i' == groupSize)
+--               then (Pair 0 [], [reverse as'])
+--               else (Pair i' as', [])
+--
+--        done (Pair _ []) = ((), [])
+--        done (Pair _ as) = ((), [reverse as])
