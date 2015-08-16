@@ -167,19 +167,3 @@ data Splitter i
 --             in 
 --             Fold step (Pair sbegin fbegin) done 
 
--- condense?
-
---chunksOf :: Int -> Transducer a [a]
---chunksOf groupSize = transduce $ 
---    Wrap step (Pair 0 []) done 
---    where
---        step (Pair i as) a = 
---            let i' = succ i 
---                as' = a:as
---            in
---            if (i' == groupSize)
---               then (Pair 0 [], [reverse as'])
---               else (Pair i' as', [])
---
---        done (Pair _ []) = ((), [])
---        done (Pair _ as) = ((), [reverse as])
