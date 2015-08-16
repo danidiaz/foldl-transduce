@@ -136,12 +136,10 @@ prefixSuffix (reverse . toList -> ps) (reverse . toList -> ss) =
 
 ------------------------------------------------------------------------------
 
--- When there's no maybe, no change of is required
 data Snoc i = Snoc (Maybe (Snoc i)) i
 
--- totally reinventing the wheel here
-foldrsnoc :: (b -> b) -> (a -> b -> b) -> b -> Snoc a -> b
-foldrsnoc g f b sn = go sn b  
+foldsnoc :: (b -> b) -> (a -> b -> b) -> b -> Snoc a -> b
+foldsnoc g f b sn = go sn b  
     where
         go (Snoc Nothing a) b' = f a b'
         go (Snoc (Just sn') a) b' = go sn' (g (f a b'))
@@ -149,21 +147,20 @@ foldrsnoc g f b sn = go sn b
 data Splitter i
      = forall x. Splitter (x -> i -> (x,Snoc [i])) x (x -> [i])
 
--- You can pass "prefix" as the transducer, for example...
--- pregroup :: Splitter i -> Transducer i b -> Transducer i b 
--- pregroup (Splitter sstep sbegin sdone) t f =
---     case t (duplicate f) of 
---         Fold fstep fbegin fdone ->
---             let 
---                 reset fs = case t (duplicate (fdone fs)) of 
---                     Fold _ fbegin' _ -> fbegin'
---                 step (Pair ss fs) i = 
---                     let (ss', sn) = sstep ss i
---                     in
---                     -- still needs work
---                     Pair ss' (foldrsnoc reset (\is sn' -> foldr (flip fstep) sn' is) fs sn)  
---                 done (Pair ss fs) = 
---                     extract (fdone (foldr (flip fstep) fs (sdone ss)))
---             in 
---             Fold step (Pair sbegin fbegin) done 
+pregroup :: Splitter i -> Transducer i b -> Transducer i b 
+pregroup (Splitter sstep sbegin sdone) t f =
+    case t (duplicate f) of 
+        Fold fstep fbegin fdone ->
+            let 
+                reset fs = case t (duplicate (fdone fs)) of 
+                    Fold _ fbegin' _ -> fbegin'
+                step (Pair ss fs) i = 
+                    let (ss', sn) = sstep ss i
+                    in
+                    -- still needs work
+                    Pair ss' (foldsnoc reset (\is sn' -> foldr (flip fstep) sn' is) fs sn)  
+                done (Pair ss fs) = 
+                    extract (fdone (foldr (flip fstep) fs (sdone ss)))
+            in 
+            Fold step (Pair sbegin fbegin) done 
 
