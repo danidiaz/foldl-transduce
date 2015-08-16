@@ -123,11 +123,12 @@ foldifyM (WrapM step begin done) =
 -- When there's no maybe, no change of is required
 data Snoc i = Snoc (Maybe (Snoc i)) i
 
-foldrsnoc :: (a -> b -> b) -> b -> Snoc a -> b
-foldrsnoc f b sn = go sn b  
+-- totally reinventing the wheel here
+foldrsnoc :: (b -> b) -> (a -> b -> b) -> b -> Snoc a -> b
+foldrsnoc g f b sn = go sn b  
     where
         go (Snoc Nothing a) b' = f a b'
-        go (Snoc (Just sn') a) b' = go sn' (f a b')
+        go (Snoc (Just sn') a) b' = go sn' (g (f a b'))
 
 data Splitter i
      = forall x. Splitter (x -> i -> (x,Snoc [i])) x (x -> [i])
@@ -142,7 +143,7 @@ pregroup (Splitter sstep sbegin sdone) t f =
                     let (ss', sn) = sstep ss i
                     in
                     -- still needs work
-                    Pair ss' (foldrsnoc (\is sn' -> foldr (flip fstep) sn' is) fs sn)  
+                    Pair ss' (foldrsnoc id (\is sn' -> foldr (flip fstep) sn' is) fs sn)  
                 done (Pair ss fs) = 
                     extract (fdone (foldr (flip fstep) fs (sdone ss)))
             in 
