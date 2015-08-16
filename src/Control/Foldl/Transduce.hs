@@ -139,11 +139,13 @@ pregroup (Splitter sstep sbegin sdone) t f =
     case t (duplicate f) of 
         Fold fstep fbegin fdone ->
             let 
+                reset fs = case t (duplicate (fdone fs)) of 
+                    Fold _ fbegin' _ -> fbegin'
                 step (Pair ss fs) i = 
                     let (ss', sn) = sstep ss i
                     in
                     -- still needs work
-                    Pair ss' (foldrsnoc id (\is sn' -> foldr (flip fstep) sn' is) fs sn)  
+                    Pair ss' (foldrsnoc reset (\is sn' -> foldr (flip fstep) sn' is) fs sn)  
                 done (Pair ss fs) = 
                     extract (fdone (foldr (flip fstep) fs (sdone ss)))
             in 
