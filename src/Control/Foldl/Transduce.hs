@@ -150,14 +150,14 @@ data Splitter i
 pregroup :: Splitter i -> Transducer i b -> Transducer i b 
 pregroup (Splitter sstep sbegin sdone) t f =
     let 
-        reset (Fold fstep fstate fdone) = 
-           t (duplicate (fdone fstate)) 
         step (Pair ss fs) i = 
            let (ss', sn) = sstep ss i
            in
-           Pair ss' (foldsnoc id step' fs sn)  
+           Pair ss' (foldsnoc reset step' fs sn)  
         step' is (Fold fstep fstate fdone) =
            Fold fstep (foldr (flip fstep) fstate is) fdone  
+        reset (Fold fstep fstate fdone) = 
+           t (duplicate (fdone fstate)) 
         done (Pair ss (Fold fstep fstate fdone)) = 
             extract (fdone (foldr (flip fstep) fstate (sdone ss)))
     in 
