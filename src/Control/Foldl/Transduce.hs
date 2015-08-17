@@ -149,18 +149,17 @@ data Splitter i
 
 pregroup :: Splitter i -> Transducer i b -> Transducer i b 
 pregroup (Splitter sstep sbegin sdone) t f =
-    case t (duplicate f) of 
-        Fold fstep fbegin fdone ->
-            let 
-                reset fs = case t (duplicate (fdone fs)) of 
-                    Fold _ fbegin' _ -> fbegin'
-                step (Pair ss fs) i = 
-                    let (ss', sn) = sstep ss i
-                    in
-                    -- still needs work
-                    Pair ss' (foldsnoc reset (\is sn' -> foldr (flip fstep) sn' is) fs sn)  
-                done (Pair ss fs) = 
-                    extract (fdone (foldr (flip fstep) fs (sdone ss)))
-            in 
-            Fold step (Pair sbegin fbegin) done 
+    let 
+        reset (Fold fstep fstate fdone) = 
+           t (duplicate (fdone fstate)) 
+        step (Pair ss fs) i = 
+           let (ss', sn) = sstep ss i
+           in
+           Pair ss' (foldsnoc id step' fs sn)  
+        step' is (Fold fstep fstate fdone) =
+           Fold fstep (foldr (flip fstep) fstate is) fdone  
+        done (Pair ss (Fold fstep fstate fdone)) = 
+            extract (fdone (foldr (flip fstep) fstate (sdone ss)))
+    in 
+    Fold step (Pair sbegin (t (duplicate f))) done 
 
