@@ -20,6 +20,7 @@ module Control.Foldl.Transduce (
     ,   foldG
     ,   chokepoint 
     ,   chokepointM
+    ,   duplicateM
     ,   module Control.Foldl
     ) where
 
@@ -39,6 +40,17 @@ instance Comonad (Fold a) where
 
     duplicate (Fold step begin done) = Fold step begin (\x -> Fold step x done)
     {-#  INLINABLE duplicate #-}
+
+duplicateM :: Applicative m => FoldM m a b -> FoldM m a (FoldM m a b)
+duplicateM (FoldM step begin done) = 
+    FoldM step begin (\x -> pure (FoldM step (pure x) done))
+{-#  INLINABLE duplicateM #-}
+
+extractM :: Monad m => FoldM m a b -> m b
+extractM (FoldM _ begin done) = begin >>= done
+{-#  INLINABLE extractM #-}
+
+
 
 ------------------------------------------------------------------------------
 
@@ -145,7 +157,8 @@ data Splitter i
 
 withG :: Splitter i -> Transduction i b -> Transduction i b 
 withG (Splitter sstep sbegin sdone) t f =
-    let 
+    Fold step (Pair sbegin (t (duplicate f))) done 
+    where
         step (Pair ss fs) i = 
            let 
                (ss', (oldSplit, newSplits)) = sstep ss i
@@ -158,11 +171,27 @@ withG (Splitter sstep sbegin sdone) t f =
            t (duplicate (fdone fstate)) 
         done (Pair ss (Fold fstep fstate fdone)) = 
             extract (fdone (foldl' fstep fstate (sdone ss)))
-    in 
-    Fold step (Pair sbegin (t (duplicate f))) done 
 
-withGM :: Splitter i -> TransductionM m i b -> TransductionM m i b 
-withGM = undefined
+withGM :: Monad m => Splitter i -> TransductionM m i b -> TransductionM m i b
+withGM (Splitter sstep sbegin sdone) t f = 
+    FoldM step (return (Pair sbegin (t (duplicateM f)))) done        
+    where
+        step (Pair ss fs) i = 
+           let 
+               (ss', (oldSplit, newSplits)) = sstep ss i
+               oldSplitState = step' fs oldSplit                   
+               fs' = _
+               --fs' = foldlM (liftM step' . reset) oldSplitState newSplits
+           in
+           liftM (Pair ss') fs'
+        step' (FoldM fstep fstate fdone) is =
+           FoldM fstep (flip (foldlM fstep) is =<< fstate) fdone  
+        reset (FoldM _ fstate fdone) = 
+           liftM (t . duplicateM) (fstate >>= fdone) 
+        done (Pair ss (FoldM fstep fstate fdone)) = do
+            let
+                finalSState = sdone ss
+            extractM =<< fdone =<< flip (foldlM fstep) finalSState =<< fstate
 
 foldG :: Splitter i -> Fold i b -> Transduction i b
 foldG = undefined
