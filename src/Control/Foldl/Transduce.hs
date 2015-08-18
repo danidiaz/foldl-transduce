@@ -25,7 +25,7 @@ module Control.Foldl.Transduce (
 
 import Data.Bifunctor
 import Data.Functor.Identity
-import Data.Foldable (foldrM,toList)
+import Data.Foldable (foldlM,foldl',toList)
 import Control.Monad
 import Control.Comonad
 import Control.Foldl (Fold(..),FoldM(..))
@@ -78,11 +78,11 @@ with' f (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
             step (Pair ws fs) i = 
                 let (ws',os) = wstep ws i 
                 in
-                Pair ws' (foldr (flip fstep) fs os)  
+                Pair ws' (foldl' fstep fs os)  
             done (Pair ws fs) = 
                 let (wr,os) = wdone ws
                 in 
-                f wr (fdone (foldr (flip fstep) fs os))
+                f wr (fdone (foldl' fstep fs os))
 
 
 withM :: Monad m => TransducerM m i o r -> TransductionM m i o 
@@ -94,10 +94,10 @@ withM' f (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
         where
             step (Pair ws fs) i = do
                 (ws',os) <- wstep ws i
-                liftM (Pair ws') (foldrM (flip fstep) fs os)
+                liftM (Pair ws') (foldlM fstep fs os)
             done (Pair ws fs) = do
                 (wr,os) <- wdone ws
-                liftM (f wr) (fdone =<< foldrM (flip fstep) fs os)
+                liftM (f wr) (fdone =<< foldlM fstep fs os)
 
 
 generalize' :: Monad m => Transducer i o r -> TransducerM m i o r
@@ -128,14 +128,14 @@ data PrefixSuffixState = PrefixAdded | PrefixPending
 --  L.fold (with (prefixSuffix "ab" "cd") L.list) "xy"
 --  L.fold (with (prefixSuffix "ab" "cd") L.list) ""
 prefixSuffix :: (Foldable p, Foldable s) => p a -> s a -> Transducer a a ()
-prefixSuffix (reverse . toList -> ps) (reverse . toList -> ss) = 
+prefixSuffix (toList -> ps) (toList -> ss) = 
     Transducer step PrefixPending done 
     where
         step PrefixPending a = 
             (PrefixAdded, [a] ++ ps)
         step PrefixAdded a = 
             (PrefixAdded, [a])
-        done PrefixPending = ((), ss ++ ps)
+        done PrefixPending = ((), ps ++ ss)
         done PrefixAdded = ((), ss)
 
 ------------------------------------------------------------------------------
@@ -159,11 +159,11 @@ withG (Splitter sstep sbegin sdone) t f =
            in
            Pair ss' (foldsnoc reset step' fs sn)  
         step' is (Fold fstep fstate fdone) =
-           Fold fstep (foldr (flip fstep) fstate is) fdone  
+           Fold fstep (foldl' fstep fstate is) fdone  
         reset (Fold _ fstate fdone) = 
            t (duplicate (fdone fstate)) 
         done (Pair ss (Fold fstep fstate fdone)) = 
-            extract (fdone (foldr (flip fstep) fstate (sdone ss)))
+            extract (fdone (foldl' fstep fstate (sdone ss)))
     in 
     Fold step (Pair sbegin (t (duplicate f))) done 
 
