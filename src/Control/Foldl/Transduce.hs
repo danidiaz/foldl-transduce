@@ -14,7 +14,7 @@ module Control.Foldl.Transduce (
     ,   simplify'
     ,   foldify
     ,   foldifyM
-    ,   prefixSuffix
+    ,   surround
     ,   withG
     ,   withGM
     ,   foldG
@@ -125,10 +125,10 @@ foldifyM (TransducerM step begin done) =
 
 data PrefixSuffixState = PrefixAdded | PrefixPending
 
---  L.fold (with (prefixSuffix "ab" "cd") L.list) "xy"
---  L.fold (with (prefixSuffix "ab" "cd") L.list) ""
-prefixSuffix :: (Foldable p, Foldable s) => p a -> s a -> Transducer a a ()
-prefixSuffix (toList -> ps) (toList -> ss) = 
+--  L.fold (with (surround "ab" "cd") L.list) "xy"
+--  L.fold (with (surround "ab" "cd") L.list) ""
+surround :: (Foldable p, Foldable s) => p a -> s a -> Transducer a a ()
+surround (toList -> ps) (toList -> ss) = 
     Transducer step PrefixPending done 
     where
         step PrefixPending a = 
@@ -140,25 +140,19 @@ prefixSuffix (toList -> ps) (toList -> ss) =
 
 ------------------------------------------------------------------------------
 
-data Snoc i = Snoc (Maybe (Snoc i)) i
-
-foldsnoc :: (b -> b) -> (a -> b -> b) -> b -> Snoc a -> b
-foldsnoc g f b sn = go sn b  
-    where
-        go (Snoc Nothing a) b' = f a b'
-        go (Snoc (Just sn') a) b' = go sn' (g (f a b'))
-
 data Splitter i
-     = forall x. Splitter (x -> i -> (x,Snoc [i])) x (x -> [i])
+     = forall x. Splitter (x -> i -> (x,([i],[[i]]))) x (x -> [i])
 
 withG :: Splitter i -> Transduction i b -> Transduction i b 
 withG (Splitter sstep sbegin sdone) t f =
     let 
         step (Pair ss fs) i = 
-           let (ss', sn) = sstep ss i
+           let 
+               (ss', (oldSplit, newSplits)) = sstep ss i
+               fs' = foldl' (step' . reset) (step' fs oldSplit) newSplits
            in
-           Pair ss' (foldsnoc reset step' fs sn)  
-        step' is (Fold fstep fstate fdone) =
+           Pair ss' fs'
+        step' (Fold fstep fstate fdone) is =
            Fold fstep (foldl' fstep fstate is) fdone  
         reset (Fold _ fstate fdone) = 
            t (duplicate (fdone fstate)) 
