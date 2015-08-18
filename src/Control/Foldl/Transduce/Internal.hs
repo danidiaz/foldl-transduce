@@ -1,1 +1,4 @@
-module Control.Foldl.Transduce.Internal () where
+module Control.Foldl.Transduce.Internal (Pair(..)) where
+
+data Pair a b = Pair !a !b
+

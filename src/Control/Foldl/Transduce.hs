@@ -2,19 +2,20 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module Control.Foldl.Transduce (
-        Transducer 
-    ,   TransducerM
-    ,   Wrap(..)
-    ,   WrapM(..)
-    ,   transduce
-    ,   transduce'
-    ,   transduceM
-    ,   transduceM'
+        Transduction 
+    ,   TransductionM
+    ,   Transducer(..)
+    ,   TransducerM(..)
+    ,   with
+    ,   with'
+    ,   withM
+    ,   withM'
     ,   generalize'
     ,   simplify'
     ,   foldify
     ,   foldifyM
     ,   prefixSuffix
+    ,   withG
     ,   module Control.Foldl
     ) where
 
@@ -25,6 +26,7 @@ import Control.Monad
 import Control.Comonad
 import Control.Foldl (Fold(..),FoldM(..))
 import qualified Control.Foldl as L
+import Control.Foldl.Transduce.Internal(Pair(..))
 
 
 instance Comonad (Fold a) where
@@ -34,41 +36,39 @@ instance Comonad (Fold a) where
     duplicate (Fold step begin done) = Fold step begin (\x -> Fold step x done)
     {-#  INLINABLE duplicate #-}
 
-data Pair a b = Pair !a !b
-
 ------------------------------------------------------------------------------
 
-type Transducer a b = forall x. Fold b x -> Fold a x
+type Transduction a b = forall x. Fold b x -> Fold a x
 
-type TransducerM m a b = forall x. Monad m => FoldM m b x -> FoldM m a x
+type TransductionM m a b = forall x. Monad m => FoldM m b x -> FoldM m a x
 
-data Wrap i o r
-     = forall x. Wrap (x -> i -> (x,[o])) x (x -> (r,[o]))
+data Transducer i o r
+     = forall x. Transducer (x -> i -> (x,[o])) x (x -> (r,[o]))
 
-instance Functor (Wrap i o) where
-    fmap f (Wrap step begin done) = Wrap step begin (first f . done)
+instance Functor (Transducer i o) where
+    fmap f (Transducer step begin done) = Transducer step begin (first f . done)
 
-instance Bifunctor (Wrap i) where
-    first f (Wrap step begin done) =
-        Wrap (fmap (fmap (fmap f)) . step) begin (fmap (fmap f) . done)
+instance Bifunctor (Transducer i) where
+    first f (Transducer step begin done) =
+        Transducer (fmap (fmap (fmap f)) . step) begin (fmap (fmap f) . done)
     second f w = fmap f w
 
-data WrapM m i o r
-     = forall x. WrapM (x -> i -> m (x,[o])) (m x) (x -> m (r,[o]))
+data TransducerM m i o r
+     = forall x. TransducerM (x -> i -> m (x,[o])) (m x) (x -> m (r,[o]))
 
-instance Functor m => Functor (WrapM m i o) where
-    fmap f (WrapM step begin done) = WrapM step begin (fmap (first f) . done)
+instance Functor m => Functor (TransducerM m i o) where
+    fmap f (TransducerM step begin done) = TransducerM step begin (fmap (first f) . done)
 
-instance Functor m => Bifunctor (WrapM m i) where
-    first f (WrapM step begin done) =
-        WrapM (fmap (fmap (fmap (fmap f))) . step) begin (fmap (fmap (fmap f)) . done)
+instance Functor m => Bifunctor (TransducerM m i) where
+    first f (TransducerM step begin done) =
+        TransducerM (fmap (fmap (fmap (fmap f))) . step) begin (fmap (fmap (fmap f)) . done)
     second f w = fmap f w
 
-transduce :: Wrap i o r -> Transducer i o 
-transduce = transduce' (flip const) 
+with :: Transducer i o r -> Transduction i o 
+with = with' (flip const) 
 
-transduce' :: (x -> y -> z) -> Wrap i o x -> Fold o y -> Fold i z
-transduce' f (Wrap wstep wstate wdone) (Fold fstep fstate fdone) =
+with' :: (x -> y -> z) -> Transducer i o x -> Fold o y -> Fold i z
+with' f (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
     Fold step (Pair wstate fstate) done 
         where
             step (Pair ws fs) i = 
@@ -81,11 +81,11 @@ transduce' f (Wrap wstep wstate wdone) (Fold fstep fstate fdone) =
                 f wr (fdone (foldr (flip fstep) fs os))
 
 
-transduceM :: Monad m => WrapM m i o r -> TransducerM m i o 
-transduceM = transduceM' (flip const)
+withM :: Monad m => TransducerM m i o r -> TransductionM m i o 
+withM = withM' (flip const)
 
-transduceM' :: Monad m => (x -> y -> z) -> WrapM m i o x -> FoldM m o y -> FoldM m i z
-transduceM' f (WrapM wstep wstate wdone) (FoldM fstep fstate fdone) =
+withM' :: Monad m => (x -> y -> z) -> TransducerM m i o x -> FoldM m o y -> FoldM m i z
+withM' f (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
     FoldM step (liftM2 Pair wstate fstate) done 
         where
             step (Pair ws fs) i = do
@@ -96,36 +96,36 @@ transduceM' f (WrapM wstep wstate wdone) (FoldM fstep fstate fdone) =
                 liftM (f wr) (fdone =<< foldrM (flip fstep) fs os)
 
 
-generalize' :: Monad m => Wrap i o r -> WrapM m i o r
-generalize' (Wrap step begin done) = WrapM step' begin' done'
+generalize' :: Monad m => Transducer i o r -> TransducerM m i o r
+generalize' (Transducer step begin done) = TransducerM step' begin' done'
   where
     step' x a = return (step x a)
     begin'    = return  begin
     done' x   = return (done x)
 
-simplify' :: WrapM Identity i o r -> Wrap i o r
-simplify' (WrapM step begin done) = Wrap step' begin' done' where
+simplify' :: TransducerM Identity i o r -> Transducer i o r
+simplify' (TransducerM step begin done) = Transducer step' begin' done' where
     step' x a = runIdentity (step x a)
     begin'    = runIdentity  begin
     done' x   = runIdentity (done x)
 
-foldify :: Wrap i o r -> Fold i r
-foldify (Wrap step begin done) =
+foldify :: Transducer i o r -> Fold i r
+foldify (Transducer step begin done) =
     Fold (\x i -> fst (step x i)) begin (\x -> fst (done x))
 
-foldifyM :: Functor m => WrapM m i o r -> FoldM m i r
-foldifyM (WrapM step begin done) =
+foldifyM :: Functor m => TransducerM m i o r -> FoldM m i r
+foldifyM (TransducerM step begin done) =
     FoldM (\x i -> fmap fst (step x i)) begin (\x -> fmap fst (done x))
 
 ------------------------------------------------------------------------------
 
 data PrefixSuffixState = PrefixAdded | PrefixPending
 
---  L.fold (transduce (prefixSuffix "ab" "cd") L.list) "xy"
---  L.fold (transduce (prefixSuffix "ab" "cd") L.list) ""
-prefixSuffix :: (Foldable p, Foldable s) => p a -> s a -> Wrap a a ()
+--  L.fold (with (prefixSuffix "ab" "cd") L.list) "xy"
+--  L.fold (with (prefixSuffix "ab" "cd") L.list) ""
+prefixSuffix :: (Foldable p, Foldable s) => p a -> s a -> Transducer a a ()
 prefixSuffix (reverse . toList -> ps) (reverse . toList -> ss) = 
-    Wrap step PrefixPending done 
+    Transducer step PrefixPending done 
     where
         step PrefixPending a = 
             (PrefixAdded, [a] ++ ps)
@@ -147,8 +147,8 @@ foldsnoc g f b sn = go sn b
 data Splitter i
      = forall x. Splitter (x -> i -> (x,Snoc [i])) x (x -> [i])
 
-pregroup :: Splitter i -> Transducer i b -> Transducer i b 
-pregroup (Splitter sstep sbegin sdone) t f =
+withG :: Splitter i -> Transduction i b -> Transduction i b 
+withG (Splitter sstep sbegin sdone) t f =
     let 
         step (Pair ss fs) i = 
            let (ss', sn) = sstep ss i
@@ -156,7 +156,7 @@ pregroup (Splitter sstep sbegin sdone) t f =
            Pair ss' (foldsnoc reset step' fs sn)  
         step' is (Fold fstep fstate fdone) =
            Fold fstep (foldr (flip fstep) fstate is) fdone  
-        reset (Fold fstep fstate fdone) = 
+        reset (Fold _ fstate fdone) = 
            t (duplicate (fdone fstate)) 
         done (Pair ss (Fold fstep fstate fdone)) = 
             extract (fdone (foldr (flip fstep) fstate (sdone ss)))
