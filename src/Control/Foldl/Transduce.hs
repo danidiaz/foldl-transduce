@@ -16,6 +16,10 @@ module Control.Foldl.Transduce (
     ,   foldifyM
     ,   prefixSuffix
     ,   withG
+    ,   withGM
+    ,   foldG
+    ,   chokepoint 
+    ,   chokepointM
     ,   module Control.Foldl
     ) where
 
@@ -163,3 +167,14 @@ withG (Splitter sstep sbegin sdone) t f =
     in 
     Fold step (Pair sbegin (t (duplicate f))) done 
 
+withGM :: Splitter i -> TransductionM m i b -> TransductionM m i b 
+withGM = undefined
+
+foldG :: Splitter i -> Fold i b -> Transduction i b
+foldG = undefined
+
+chokepoint :: Fold i b -> Transducer i b ()
+chokepoint = undefined
+
+chokepointM :: FoldM m i b -> TransducerM m i b ()
+chokepointM = undefined
