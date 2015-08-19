@@ -46,12 +46,6 @@ duplicateM (FoldM step begin done) =
     FoldM step begin (\x -> pure (FoldM step (pure x) done))
 {-#  INLINABLE duplicateM #-}
 
-extractM :: Monad m => FoldM m a b -> m b
-extractM (FoldM _ begin done) = begin >>= done
-{-#  INLINABLE extractM #-}
-
-
-
 ------------------------------------------------------------------------------
 
 type Transduction a b = forall x. Fold b x -> Fold a x
@@ -153,7 +147,7 @@ surround (toList -> ps) (toList -> ss) =
 ------------------------------------------------------------------------------
 
 data Splitter i
-     = forall x. Splitter (x -> i -> (x,([i],[[i]]))) x (x -> [i])
+     = forall x. Splitter (x -> i -> (x,[i],[[i]])) x (x -> [i])
 
 withG :: Splitter i -> Transduction i b -> Transduction i b 
 withG (Splitter sstep sbegin sdone) t f =
@@ -161,12 +155,11 @@ withG (Splitter sstep sbegin sdone) t f =
     where
         step (Pair ss fs) i = 
            let 
-               (ss', (oldSplit, newSplits)) = sstep ss i
+               (ss', oldSplit, newSplits) = sstep ss i
                fs' = foldl' (step' . reset) (step' fs oldSplit) newSplits
            in
            Pair ss' fs'
-        step' (Fold fstep fstate fdone) is =
-           Fold fstep (foldl' fstep fstate is) fdone  
+        step' = L.fold . duplicate
         reset (Fold _ fstate fdone) = 
            t (duplicate (fdone fstate)) 
         done (Pair ss (Fold fstep fstate fdone)) = 
@@ -178,17 +171,17 @@ withGM (Splitter sstep sbegin sdone) t f =
     where
         step (Pair ss fs) i = do
              let 
-                 (ss', (oldSplit, newSplits)) = sstep ss i
-                 --oldSplitState = step' fs oldSplit                   
-             oldSplitState <- L.foldM (duplicateM fs) oldSplit
-             fs' <- foldlM (\z zz -> reset z >>= \z' -> L.foldM (duplicateM z') zz) oldSplitState newSplits
-             return (Pair ss' fs')
-        step' (FoldM fstep fstate fdone) is =
-           FoldM fstep (flip (foldlM fstep) is =<< fstate) fdone  
+                 (ss', oldSplit, newSplits) = sstep ss i
+             fs' <- step' fs oldSplit
+             fs'' <- foldlM step'' fs' newSplits
+             return (Pair ss' fs'')
+        step' = L.foldM . duplicateM
+        step'' = \fs is -> reset fs >>= \fs' -> step' fs' is
         reset (FoldM _ fstate fdone) = 
            liftM (t . duplicateM) (fstate >>= fdone) 
         done (Pair ss (FoldM fstep fstate fdone)) = do
-            extractM =<< fdone =<< flip (foldlM fstep) (sdone ss) =<< fstate
+            finalf <- fdone =<< flip (foldlM fstep) (sdone ss) =<< fstate
+            L.foldM finalf [] 
 
 foldG :: Splitter i -> Fold i b -> Transduction i b
 foldG = undefined
