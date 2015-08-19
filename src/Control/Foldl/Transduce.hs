@@ -152,7 +152,10 @@ surround (toList -> ps) (toList -> ss) =
         done PrefixPending = ((), ps ++ ss)
         done PrefixAdded = ((), ss)
 
-surroundIO :: (Foldable p, Foldable s, MonadIO m) => m (p a) -> m (s a) -> TransducerM m a a ()
+surroundIO :: (Foldable p, Foldable s, MonadIO m) 
+           => m (p a) 
+           -> m (s a) 
+           -> TransducerM m a a ()
 surroundIO prefixa suffixa = 
     TransducerM step (return PrefixPending) done 
     where
