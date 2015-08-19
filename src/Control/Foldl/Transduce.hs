@@ -181,7 +181,7 @@ withGM (Splitter sstep sbegin sdone) t f =
                  (ss', (oldSplit, newSplits)) = sstep ss i
                  --oldSplitState = step' fs oldSplit                   
              oldSplitState <- L.foldM (duplicateM fs) oldSplit
-             fs' <- foldlM (\z _ -> return z) oldSplitState newSplits
+             fs' <- foldlM (\z zz -> L.foldM (duplicateM z) zz) oldSplitState newSplits
              --    fs' = foldlM (return . id) oldSplitState newSplits
              return (Pair ss' fs')
         step' (FoldM fstep fstate fdone) is =
