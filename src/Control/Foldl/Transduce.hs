@@ -235,7 +235,7 @@ foldG splitter f = withG splitter (with (chokepoint f))
 ------------------------------------------------------------------------------
 
 chunksOf :: Int -> Splitter a
-chunksOf groupSize = Splitter step 0 done 
+chunksOf groupSize = Splitter step (negate 1) done 
     where
         step i a =
             let i' = succ i in
