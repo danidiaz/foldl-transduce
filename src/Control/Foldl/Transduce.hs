@@ -23,6 +23,8 @@ module Control.Foldl.Transduce (
     ,   chokepoint 
     ,   chokepointM
     ,   duplicateM
+    ,   hoistTransducer
+    ,   hoistFold
         -- * Splitter types
     ,   Splitter(..)
         -- * Working with groups
@@ -189,6 +191,12 @@ duplicateM :: Applicative m => FoldM m a b -> FoldM m a (FoldM m a b)
 duplicateM (FoldM step begin done) = 
     FoldM step begin (\x -> pure (FoldM step (pure x) done))
 {-#  INLINABLE duplicateM #-}
+
+hoistTransducer :: Monad m => (forall a. m a -> n a) -> TransducerM m i o r -> TransducerM n i o r 
+hoistTransducer g (TransducerM step begin done) = TransducerM (\s i -> g (step s i)) (g begin) (g . done)
+
+hoistFold :: Monad m => (forall a. m a -> n a) -> FoldM m i r -> FoldM n i r 
+hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g . done)
 
 ------------------------------------------------------------------------------
 
