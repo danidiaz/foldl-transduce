@@ -180,10 +180,10 @@ withGM (Splitter sstep sbegin sdone) t f =
              let 
                  (ss', (oldSplit, newSplits)) = sstep ss i
                  --oldSplitState = step' fs oldSplit                   
-                 oldSplitState = L.foldM (duplicateM fs) oldSplit
---               fs' = _
---               fs' = foldlM (liftM step' . reset) oldSplitState newSplits
-             liftM (Pair ss') oldSplitState
+             oldSplitState <- L.foldM (duplicateM fs) oldSplit
+             fs' <- foldlM (\z _ -> return z) oldSplitState newSplits
+             --    fs' = foldlM (return . id) oldSplitState newSplits
+             return (Pair ss' fs')
         step' (FoldM fstep fstate fdone) is =
            FoldM fstep (flip (foldlM fstep) is =<< fstate) fdone  
         reset (FoldM _ fstate fdone) = 
