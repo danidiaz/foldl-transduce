@@ -31,6 +31,7 @@ module Control.Foldl.Transduce (
     ,   foldG
         -- * Splitters
         -- * Re-exports
+        -- $reexports
     ,   module Control.Foldl
     ) where
 
@@ -51,16 +52,10 @@ instance Comonad (Fold a) where
     duplicate (Fold step begin done) = Fold step begin (\x -> Fold step x done)
     {-#  INLINABLE duplicate #-}
 
-duplicateM :: Applicative m => FoldM m a b -> FoldM m a (FoldM m a b)
-duplicateM (FoldM step begin done) = 
-    FoldM step begin (\x -> pure (FoldM step (pure x) done))
-{-#  INLINABLE duplicateM #-}
-
 ------------------------------------------------------------------------------
 
 type Transduction a b = forall x. Fold b x -> Fold a x
 
-type TransductionM m a b = forall x. Monad m => FoldM m b x -> FoldM m a x
 
 data Transducer i o r
      = forall x. Transducer (x -> i -> (x,[o])) x (x -> (r,[o]))
@@ -72,6 +67,8 @@ instance Bifunctor (Transducer i) where
     first f (Transducer step begin done) =
         Transducer (fmap (fmap (fmap f)) . step) begin (fmap (fmap f) . done)
     second f w = fmap f w
+
+type TransductionM m a b = forall x. Monad m => FoldM m b x -> FoldM m a x
 
 data TransducerM m i o r
      = forall x. TransducerM (x -> i -> m (x,[o])) (m x) (x -> m (r,[o]))
@@ -115,28 +112,6 @@ withM' f (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
                 (wr,os) <- wdone ws
                 liftM (f wr) (fdone =<< foldlM fstep fs os)
 
-
-generalize' :: Monad m => Transducer i o r -> TransducerM m i o r
-generalize' (Transducer step begin done) = TransducerM step' begin' done'
-  where
-    step' x a = return (step x a)
-    begin'    = return  begin
-    done' x   = return (done x)
-
-simplify' :: TransducerM Identity i o r -> Transducer i o r
-simplify' (TransducerM step begin done) = Transducer step' begin' done' where
-    step' x a = runIdentity (step x a)
-    begin'    = runIdentity  begin
-    done' x   = runIdentity (done x)
-
-foldify :: Transducer i o r -> Fold i r
-foldify (Transducer step begin done) =
-    Fold (\x i -> fst (step x i)) begin (\x -> fst (done x))
-
-foldifyM :: Functor m => TransducerM m i o r -> FoldM m i r
-foldifyM (TransducerM step begin done) =
-    FoldM (\x i -> fmap fst (step x i)) begin (\x -> fmap fst (done x))
-
 ------------------------------------------------------------------------------
 
 data SurroundState = PrefixAdded | PrefixPending
@@ -171,6 +146,48 @@ surroundIO prefixa suffixa =
         done PrefixAdded = do
             ss <- fmap toList suffixa
             return ((), toList ss)
+
+------------------------------------------------------------------------------
+
+generalize' :: Monad m => Transducer i o r -> TransducerM m i o r
+generalize' (Transducer step begin done) = TransducerM step' begin' done'
+  where
+    step' x a = return (step x a)
+    begin'    = return  begin
+    done' x   = return (done x)
+
+simplify' :: TransducerM Identity i o r -> Transducer i o r
+simplify' (TransducerM step begin done) = Transducer step' begin' done' where
+    step' x a = runIdentity (step x a)
+    begin'    = runIdentity  begin
+    done' x   = runIdentity (done x)
+
+foldify :: Transducer i o r -> Fold i r
+foldify (Transducer step begin done) =
+    Fold (\x i -> fst (step x i)) begin (\x -> fst (done x))
+
+foldifyM :: Functor m => TransducerM m i o r -> FoldM m i r
+foldifyM (TransducerM step begin done) =
+    FoldM (\x i -> fmap fst (step x i)) begin (\x -> fmap fst (done x))
+
+chokepoint :: Fold i b -> Transducer i b ()
+chokepoint (Fold fstep fstate fdone) =
+    (Transducer wstep fstate wdone)
+    where
+        wstep = \fstate' i -> (fstep fstate' i,[])
+        wdone = \fstate' -> ((),[fdone fstate'])
+
+chokepointM :: Applicative m => FoldM m i b -> TransducerM m i b ()
+chokepointM (FoldM fstep fstate fdone) = 
+    (TransducerM wstep fstate wdone)
+    where
+        wstep = \fstate' i -> fmap (\s -> (s,[])) (fstep fstate' i)
+        wdone = \fstate' -> fmap (\r -> ((),[r])) (fdone fstate')
+
+duplicateM :: Applicative m => FoldM m a b -> FoldM m a (FoldM m a b)
+duplicateM (FoldM step begin done) = 
+    FoldM step begin (\x -> pure (FoldM step (pure x) done))
+{-#  INLINABLE duplicateM #-}
 
 ------------------------------------------------------------------------------
 
@@ -214,17 +231,8 @@ withGM (Splitter sstep sbegin sdone) t f =
 foldG :: Splitter i -> Fold i b -> Transduction i b
 foldG splitter f = withG splitter (with (chokepoint f))
 
-chokepoint :: Fold i b -> Transducer i b ()
-chokepoint (Fold fstep fstate fdone) =
-    (Transducer wstep fstate wdone)
-    where
-        wstep = \fstate' i -> (fstep fstate' i,[])
-        wdone = \fstate' -> ((),[fdone fstate'])
+------------------------------------------------------------------------------
 
-chokepointM :: Applicative m => FoldM m i b -> TransducerM m i b ()
-chokepointM (FoldM fstep fstate fdone) = 
-    (TransducerM wstep fstate wdone)
-    where
-        wstep = \fstate' i -> fmap (\s -> (s,[])) (fstep fstate' i)
-        wdone = \fstate' -> fmap (\r -> ((),[r])) (fdone fstate')
+{- $reexports
 
+-}
