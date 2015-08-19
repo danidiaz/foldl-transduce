@@ -33,7 +33,6 @@ import Control.Foldl (Fold(..),FoldM(..))
 import qualified Control.Foldl as L
 import Control.Foldl.Transduce.Internal(Pair(..))
 
-
 instance Comonad (Fold a) where
     extract (Fold _ begin done) = done begin
     {-#  INLINABLE extract #-}
@@ -131,8 +130,6 @@ foldifyM (TransducerM step begin done) =
 
 data PrefixSuffixState = PrefixAdded | PrefixPending
 
---  L.fold (with (surround "ab" "cd") L.list) "xy"
---  L.fold (with (surround "ab" "cd") L.list) ""
 surround :: (Foldable p, Foldable s) => p a -> s a -> Transducer a a ()
 surround (toList -> ps) (toList -> ss) = 
     Transducer step PrefixPending done 
@@ -184,10 +181,19 @@ withGM (Splitter sstep sbegin sdone) t f =
             L.foldM finalf [] 
 
 foldG :: Splitter i -> Fold i b -> Transduction i b
-foldG = undefined
+foldG splitter f = withG splitter (with (chokepoint f))
 
 chokepoint :: Fold i b -> Transducer i b ()
-chokepoint = undefined
+chokepoint (Fold fstep fstate fdone) =
+    (Transducer wstep fstate wdone)
+    where
+        wstep = \fstate' i -> (fstep fstate' i,[])
+        wdone = \fstate' -> ((),[fdone fstate'])
 
-chokepointM :: FoldM m i b -> TransducerM m i b ()
-chokepointM = undefined
+chokepointM :: Applicative m => FoldM m i b -> TransducerM m i b ()
+chokepointM (FoldM fstep fstate fdone) = 
+    (TransducerM wstep fstate wdone)
+    where
+        wstep = \fstate' i -> fmap (\s -> (s,[])) (fstep fstate' i)
+        wdone = \fstate' -> fmap (\r -> ((),[r])) (fdone fstate')
+
