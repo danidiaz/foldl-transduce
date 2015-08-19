@@ -2,25 +2,35 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module Control.Foldl.Transduce (
+        -- * Transducer types
         Transduction 
-    ,   TransductionM
     ,   Transducer(..)
+    ,   TransductionM
     ,   TransducerM(..)
+        -- * Applying transducers
     ,   with
     ,   with'
     ,   withM
     ,   withM'
+        -- * Transducers
+    ,   surround
+    ,   surroundIO
+        -- * Transducer utilities
     ,   generalize'
     ,   simplify'
     ,   foldify
     ,   foldifyM
-    ,   surround
-    ,   withG
-    ,   withGM
-    ,   foldG
     ,   chokepoint 
     ,   chokepointM
     ,   duplicateM
+        -- * Splitter types
+    ,   Splitter(..)
+        -- * Working with groups
+    ,   withG
+    ,   withGM
+    ,   foldG
+        -- * Splitters
+        -- * Re-exports
     ,   module Control.Foldl
     ) where
 
@@ -28,6 +38,7 @@ import Data.Bifunctor
 import Data.Functor.Identity
 import Data.Foldable (foldlM,foldl',toList)
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.Comonad
 import Control.Foldl (Fold(..),FoldM(..))
 import qualified Control.Foldl as L
@@ -128,18 +139,35 @@ foldifyM (TransducerM step begin done) =
 
 ------------------------------------------------------------------------------
 
-data PrefixSuffixState = PrefixAdded | PrefixPending
+data SurroundState = PrefixAdded | PrefixPending
 
 surround :: (Foldable p, Foldable s) => p a -> s a -> Transducer a a ()
 surround (toList -> ps) (toList -> ss) = 
     Transducer step PrefixPending done 
     where
         step PrefixPending a = 
-            (PrefixAdded, [a] ++ ps)
+            (PrefixAdded, ps ++ [a])
         step PrefixAdded a = 
             (PrefixAdded, [a])
         done PrefixPending = ((), ps ++ ss)
         done PrefixAdded = ((), ss)
+
+surroundIO :: (Foldable p, Foldable s, MonadIO m) => m (p a) -> m (s a) -> TransducerM m a a ()
+surroundIO prefixa suffixa = 
+    TransducerM step (return PrefixPending) done 
+    where
+        step PrefixPending a = do
+            ps <- fmap toList prefixa
+            return (PrefixAdded, ps ++ [a])
+        step PrefixAdded a = 
+            return (PrefixAdded, [a])
+        done PrefixPending = do
+            ps <- fmap toList prefixa
+            ss <- fmap toList suffixa
+            return ((), toList ps ++ toList ss)
+        done PrefixAdded = do
+            ss <- fmap toList suffixa
+            return ((), toList ss)
 
 ------------------------------------------------------------------------------
 
