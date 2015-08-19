@@ -176,22 +176,20 @@ withGM :: Monad m => Splitter i -> TransductionM m i b -> TransductionM m i b
 withGM (Splitter sstep sbegin sdone) t f = 
     FoldM step (return (Pair sbegin (t (duplicateM f)))) done        
     where
-        step (Pair ss fs) i = 
-           let 
-               (ss', (oldSplit, newSplits)) = sstep ss i
-               oldSplitState = step' fs oldSplit                   
-               fs' = _
-               --fs' = foldlM (liftM step' . reset) oldSplitState newSplits
-           in
-           liftM (Pair ss') fs'
+        step (Pair ss fs) i = do
+             let 
+                 (ss', (oldSplit, newSplits)) = sstep ss i
+                 --oldSplitState = step' fs oldSplit                   
+                 oldSplitState = L.foldM (duplicateM fs) oldSplit
+--               fs' = _
+--               fs' = foldlM (liftM step' . reset) oldSplitState newSplits
+             liftM (Pair ss') oldSplitState
         step' (FoldM fstep fstate fdone) is =
            FoldM fstep (flip (foldlM fstep) is =<< fstate) fdone  
         reset (FoldM _ fstate fdone) = 
            liftM (t . duplicateM) (fstate >>= fdone) 
         done (Pair ss (FoldM fstep fstate fdone)) = do
-            let
-                finalSState = sdone ss
-            extractM =<< fdone =<< flip (foldlM fstep) finalSState =<< fstate
+            extractM =<< fdone =<< flip (foldlM fstep) (sdone ss) =<< fstate
 
 foldG :: Splitter i -> Fold i b -> Transduction i b
 foldG = undefined
