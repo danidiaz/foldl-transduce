@@ -30,6 +30,7 @@ module Control.Foldl.Transduce (
     ,   withGM
     ,   foldG
         -- * Splitters
+    ,   chunksOf
         -- * Re-exports
         -- $reexports
     ,   module Control.Foldl
@@ -230,6 +231,18 @@ withGM (Splitter sstep sbegin sdone) t f =
 
 foldG :: Splitter i -> Fold i b -> Transduction i b
 foldG splitter f = withG splitter (with (chokepoint f))
+
+------------------------------------------------------------------------------
+
+chunksOf :: Int -> Splitter a
+chunksOf groupSize = Splitter step 0 done 
+    where
+        step i a =
+            let i' = succ i in
+            if (i' == groupSize)
+               then (0, [], [[a]])
+               else (i',[a],[])
+        done _ = []
 
 ------------------------------------------------------------------------------
 
