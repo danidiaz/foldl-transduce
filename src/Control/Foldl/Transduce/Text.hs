@@ -1,10 +1,13 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Control.Foldl.Transduce.Text (
         decoder
     ,   utf8
     ,   utf8lenient 
     ,   utf8strict
-    ,   _decoder
-    ,   _utf8
+    ,   decoderE
+    ,   utf8E
+    ,   newline
     ) where
 
 import qualified Data.ByteString as B
@@ -43,22 +46,22 @@ utf8lenient = utf8 T.lenientDecode
 utf8strict :: L.Transducer B.ByteString T.Text ()
 utf8strict = utf8 T.strictDecode
 
-_decoder :: (T.OnDecodeError -> B.ByteString -> T.Decoding)
+decoderE :: (T.OnDecodeError -> B.ByteString -> T.Decoding)
          -> L.TransducerM (ExceptT T.UnicodeException IO) B.ByteString T.Text ()   
-_decoder next = L.TransducerM step (pure (Pair mempty next')) done
+decoderE next = L.TransducerM step (pure (Pair mempty next')) done
     where
-        step (Pair _ next'') i = do
-            emc <- liftIO . try . evaluate $ next'' i 
+        step (Pair _ next1) i = do
+            emc <- liftIO . try . evaluate $ next1 i 
             case emc of 
                 Left ue -> do
                     throwE ue
-                Right (T.Some txt leftovers next''') -> do
-                    return (Pair leftovers next''', [txt])
+                Right (T.Some txt leftovers next2) -> do
+                    return (Pair leftovers next2, [txt])
         done (Pair leftovers _) = do
             if B.null leftovers
                 then return ((), [])
                 else do
-                    emc <- liftIO $ try (evaluate onLeftovers')
+                    emc <- liftIO . try . evaluate $ onLeftovers'
                     case emc of
                         Left ue -> do
                             throwE ue
@@ -67,5 +70,9 @@ _decoder next = L.TransducerM step (pure (Pair mempty next')) done
         next' = next T.strictDecode  
         onLeftovers' = T.strictDecode "leftovers" Nothing
 
-_utf8 :: L.TransducerM (ExceptT T.UnicodeException IO) B.ByteString T.Text ()   
-_utf8 = _decoder T.streamDecodeUtf8With
+utf8E :: L.TransducerM (ExceptT T.UnicodeException IO) B.ByteString T.Text ()   
+utf8E = decoderE T.streamDecodeUtf8With
+
+
+newline :: L.Transducer T.Text T.Text ()
+newline = L.surround [] ["\n"]

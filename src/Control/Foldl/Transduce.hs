@@ -28,9 +28,10 @@ module Control.Foldl.Transduce (
         -- * Splitter types
     ,   Splitter(..)
         -- * Working with groups
-    ,   withG
-    ,   withGM
-    ,   foldG
+    ,   groups
+    ,   groupsM
+    ,   folds
+    ,   foldsM
         -- * Splitters
     ,   chunksOf
         -- * Re-exports
@@ -203,8 +204,8 @@ hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g 
 data Splitter i
      = forall x. Splitter (x -> i -> (x,[i],[[i]])) x (x -> [i])
 
-withG :: Splitter i -> Transduction i b -> Transduction i b 
-withG (Splitter sstep sbegin sdone) t f =
+groups :: Splitter i -> Transduction i b -> Transduction i b 
+groups (Splitter sstep sbegin sdone) t f =
     Fold step (Pair sbegin (t (duplicate f))) done 
     where
         step (Pair ss fs) i = 
@@ -219,8 +220,8 @@ withG (Splitter sstep sbegin sdone) t f =
         done (Pair ss (Fold fstep fstate fdone)) = 
             extract (fdone (foldl' fstep fstate (sdone ss)))
 
-withGM :: Monad m => Splitter i -> TransductionM m i b -> TransductionM m i b
-withGM (Splitter sstep sbegin sdone) t f = 
+groupsM :: Monad m => Splitter i -> TransductionM m i b -> TransductionM m i b
+groupsM (Splitter sstep sbegin sdone) t f = 
     FoldM step (return (Pair sbegin (t (duplicateM f)))) done        
     where
         step (Pair ss fs) i = do
@@ -237,8 +238,11 @@ withGM (Splitter sstep sbegin sdone) t f =
             finalf <- fdone =<< flip (foldlM fstep) (sdone ss) =<< fstate
             L.foldM finalf [] 
 
-foldG :: Splitter i -> Fold i b -> Transduction i b
-foldG splitter f = withG splitter (with (chokepoint f))
+folds :: Splitter i -> Fold i b -> Transduction i b
+folds splitter f = groups splitter (with (chokepoint f))
+
+foldsM :: Splitter i -> FoldM m i b -> TransductionM m i b
+foldsM splitter f = groupsM splitter (withM (chokepointM f))
 
 ------------------------------------------------------------------------------
 
