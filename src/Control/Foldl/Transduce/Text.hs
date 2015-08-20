@@ -8,9 +8,12 @@ module Control.Foldl.Transduce.Text (
     ,   decoderE
     ,   utf8E
     ,   newline
+    ,   lines
     ) where
 
+import Prelude hiding (lines)
 import qualified Data.ByteString as B
+import qualified Data.Text 
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T
@@ -76,3 +79,17 @@ utf8E = decoderE T.streamDecodeUtf8With
 
 newline :: L.Transducer T.Text T.Text ()
 newline = L.surround [] ["\n"]
+
+lines :: L.Splitter T.Text
+lines = L.Splitter step False done 
+    -- beware: Data.Text.lines ignores los "\n" at the end.
+    -- keep that information in the state...
+    where
+        step previousnl txt | Data.Text.null txt = (previousnl,[],[]) 
+        step previousnl txt = do
+            let
+                lastc = Data.Text.last txt -- we have checked nonemptiness
+                txts = T.lines txt
+            case (lastc == '\n', txts) of
+                otherwise -> undefined 
+        done _ = []
