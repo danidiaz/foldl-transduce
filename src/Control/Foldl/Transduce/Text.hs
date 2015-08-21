@@ -88,8 +88,10 @@ lines = L.Splitter step False done
         step previousnl txt | Data.Text.null txt = (previousnl,[],[]) 
         step previousnl txt = do
             let
-                lastc = Data.Text.last txt -- we have checked nonemptiness
+                lastc = Data.Text.last txt == '\n'
                 txts = T.lines txt
-            case (lastc == '\n', txts) of
-                otherwise -> undefined 
+            case (previousnl,txts) of
+                (_,[]) -> error "never happens"
+                (True,ts) -> undefined
+                (False,t:ts) -> undefined
         done _ = []

@@ -8,10 +8,10 @@ module Control.Foldl.Transduce (
     ,   TransductionM
     ,   TransducerM(..)
         -- * Applying transducers
-    ,   with
-    ,   with'
-    ,   withM
-    ,   withM'
+    ,   transduce
+    ,   transduce'
+    ,   transduceM
+    ,   transduceM'
         -- * Transducers
     ,   surround
     ,   surroundIO
@@ -27,7 +27,7 @@ module Control.Foldl.Transduce (
     ,   hoistFold
         -- * Splitter types
     ,   Splitter(..)
-        -- * Working with groups
+        -- * Working transduce groups
     ,   groups
     ,   groupsM
     ,   folds
@@ -85,11 +85,11 @@ instance Functor m => Bifunctor (TransducerM m i) where
         TransducerM (fmap (fmap (fmap (fmap f))) . step) begin (fmap (fmap (fmap f)) . done)
     second f w = fmap f w
 
-with :: Transducer i o r -> Transduction i o 
-with = with' (flip const) 
+transduce :: Transducer i o r -> Transduction i o 
+transduce = transduce' (flip const) 
 
-with' :: (x -> y -> z) -> Transducer i o x -> Fold o y -> Fold i z
-with' f (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
+transduce' :: (x -> y -> z) -> Transducer i o x -> Fold o y -> Fold i z
+transduce' f (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
     Fold step (Pair wstate fstate) done 
         where
             step (Pair ws fs) i = 
@@ -102,11 +102,11 @@ with' f (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
                 f wr (fdone (foldl' fstep fs os))
 
 
-withM :: Monad m => TransducerM m i o r -> TransductionM m i o 
-withM = withM' (flip const)
+transduceM :: Monad m => TransducerM m i o r -> TransductionM m i o 
+transduceM = transduceM' (flip const)
 
-withM' :: Monad m => (x -> y -> z) -> TransducerM m i o x -> FoldM m o y -> FoldM m i z
-withM' f (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
+transduceM' :: Monad m => (x -> y -> z) -> TransducerM m i o x -> FoldM m o y -> FoldM m i z
+transduceM' f (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
     FoldM step (liftM2 Pair wstate fstate) done 
         where
             step (Pair ws fs) i = do
@@ -239,10 +239,10 @@ groupsM (Splitter sstep sbegin sdone) t f =
             L.foldM finalf [] 
 
 folds :: Splitter i -> Fold i b -> Transduction i b
-folds splitter f = groups splitter (with (chokepoint f))
+folds splitter f = groups splitter (transduce (chokepoint f))
 
 foldsM :: Splitter i -> FoldM m i b -> TransductionM m i b
-foldsM splitter f = groupsM splitter (withM (chokepointM f))
+foldsM splitter f = groupsM splitter (transduceM (chokepointM f))
 
 ------------------------------------------------------------------------------
 
