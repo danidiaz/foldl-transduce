@@ -10,6 +10,7 @@ module Control.Foldl.Transduce.Text (
     ,   newline
     ,   lines
     ,   stripStart
+    ,   stripEnd
     ) where
 
 import Prelude hiding (lines)
@@ -96,11 +97,29 @@ lines = L.Splitter step False done
                 (False,t:ts) -> (lastc, [t], map pure ts)
         done _ = []
 
+blank :: T.Text -> Bool
+blank = Data.Text.all isSpace
+
 stripStart :: L.Transducer T.Text T.Text ()
 stripStart = L.Transducer step False done
     where
         step True i = (True, [i])
-        step False i | blank i = (False, [])
-        step False i = (True, [T.stripStart i])
+        step False i =
+            if blank i 
+                then (False, [])
+                else (True, [T.stripStart i])
         done _  = ((),[])
-        blank = Data.Text.all isSpace
+
+stripEnd :: L.Transducer T.Text T.Text ()
+stripEnd = L.Transducer step [] done
+    where
+        step txts i =
+            if blank i
+                -- dangerous!
+                then (i:txts, [])
+                else ([i], reverse txts)
+        done txts = case reverse txts of
+            txt : _ -> ((), [T.stripEnd txt])
+            _ -> ((), [])
+
+
