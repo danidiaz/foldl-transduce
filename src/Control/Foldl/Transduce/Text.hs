@@ -82,8 +82,6 @@ newline = L.surround [] ["\n"]
 
 lines :: L.Splitter T.Text
 lines = L.Splitter step False done 
-    -- beware: Data.Text.lines ignores los "\n" at the end.
-    -- keep that information in the state...
     where
         step previousnl txt | Data.Text.null txt = (previousnl,[],[]) 
         step previousnl txt = do
@@ -92,6 +90,6 @@ lines = L.Splitter step False done
                 txts = T.lines txt
             case (previousnl,txts) of
                 (_,[]) -> error "never happens"
-                (True,ts) -> undefined
-                (False,t:ts) -> undefined
+                (True,ts) -> (lastc, [], map pure txts)
+                (False,t:ts) -> (lastc, [t], map pure ts)
         done _ = []
