@@ -9,9 +9,11 @@ module Control.Foldl.Transduce.Text (
     ,   utf8E
     ,   newline
     ,   lines
+    ,   stripStart
     ) where
 
 import Prelude hiding (lines)
+import Data.Char
 import qualified Data.ByteString as B
 import qualified Data.Text 
 import qualified Data.Text as T
@@ -93,3 +95,12 @@ lines = L.Splitter step False done
                 (True,ts) -> (lastc, [], map pure txts)
                 (False,t:ts) -> (lastc, [t], map pure ts)
         done _ = []
+
+stripStart :: L.Transducer T.Text T.Text ()
+stripStart = L.Transducer step False done
+    where
+        step True i = (True, [i])
+        step False i | blank i = (False, [])
+        step False i = (True, [T.stripStart i])
+        done _  = ((),[])
+        blank = Data.Text.all isSpace
