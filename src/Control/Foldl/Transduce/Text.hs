@@ -1,16 +1,19 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Control.Foldl.Transduce.Text (
+        -- * Decoding transducers
         decoder
     ,   utf8
     ,   utf8lenient 
     ,   utf8strict
     ,   decoderE
     ,   utf8E
+        -- * Other transducers
     ,   newline
-    ,   lines
     ,   stripStart
     ,   stripEnd
+        -- * Splitters
+    ,   lines
     ) where
 
 import Prelude hiding (lines)
@@ -49,6 +52,11 @@ utf8 onDecodeError =
 utf8lenient :: L.Transducer B.ByteString T.Text ()
 utf8lenient = utf8 T.lenientDecode
 
+{-| __/BEWARE!/__ 
+    This pure function may throw 'UnicodeException'.
+    __/BEWARE!/__ 
+
+-}
 utf8strict :: L.Transducer B.ByteString T.Text ()
 utf8strict = utf8 T.strictDecode
 
@@ -79,7 +87,9 @@ decoderE next = L.TransducerM step (pure (Pair mempty next')) done
 utf8E :: L.TransducerM (ExceptT T.UnicodeException IO) B.ByteString T.Text ()   
 utf8E = decoderE T.streamDecodeUtf8With
 
+{-| Appends a newline at the end of the stream.		
 
+-}
 newline :: L.Transducer T.Text T.Text ()
 newline = L.surround [] ["\n"]
 
@@ -93,7 +103,7 @@ lines = L.Splitter step False done
                 txts = T.lines txt
             case (previousnl,txts) of
                 (_,[]) -> error "never happens"
-                (True,ts) -> (lastc, [], map pure txts)
+                (True,_) -> (lastc, [], map pure txts)
                 (False,t:ts) -> (lastc, [t], map pure ts)
         done _ = []
 
@@ -121,5 +131,4 @@ stripEnd = L.Transducer step [] done
         done txts = case reverse txts of
             txt : _ -> ((), [T.stripEnd txt])
             _ -> ((), [])
-
 

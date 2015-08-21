@@ -32,3 +32,14 @@ Library
     Other-Modules:
         Control.Foldl.Transduce.Internal
     GHC-Options: -O2 -Wall
+
+test-suite doctests
+  type:           exitcode-stdio-1.0
+  ghc-options:    -Wall -threaded
+  hs-source-dirs: tests
+  main-is:        doctests.hs
+
+  build-depends:
+        base >= 4.4 && < 5
+      , foldl-transduce == 0.0.1 
+      , doctest >= 0.10.1
