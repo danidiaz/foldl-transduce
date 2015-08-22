@@ -1,5 +1,6 @@
 {-# LANGUAGE ExistentialQuantification, RankNTypes #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE CPP #-}
 
 module Control.Foldl.Transduce (
         -- * Transducer types
@@ -58,12 +59,14 @@ import Control.Foldl.Transduce.Internal(Pair(..))
 
 ------------------------------------------------------------------------------
 
+#if !(MIN_VERSION_foldl(1,1,2))
 instance Comonad (Fold a) where
     extract (Fold _ begin done) = done begin
     {-#  INLINABLE extract #-}
 
     duplicate (Fold step begin done) = Fold step begin (\x -> Fold step x done)
     {-#  INLINABLE duplicate #-}
+#endif
 
 ------------------------------------------------------------------------------
 
@@ -145,6 +148,12 @@ surround (toList -> ps) (toList -> ss) =
         done PrefixPending = ((), ps ++ ss)
         done PrefixAdded = ((), ss)
 
+{-| Like 'surround', but the prefix and suffix are obtained using a 'IO'
+    action.
+
+>>> L.foldM (transduceM (surroundIO (return "prefix") (return "suffix")) (L.generalize L.list)) "middle"
+"prefixmiddlesuffix"
+-}
 surroundIO :: (Foldable p, Foldable s, MonadIO m) 
            => m (p a) 
            -> m (s a) 
@@ -207,9 +216,15 @@ duplicateM (FoldM step begin done) =
     FoldM step begin (\x -> pure (FoldM step (pure x) done))
 {-#  INLINABLE duplicateM #-}
 
+{-| Changes the base monad used by a 'TransducerM'.		
+
+-}
 hoistTransducer :: Monad m => (forall a. m a -> n a) -> TransducerM m i o r -> TransducerM n i o r 
 hoistTransducer g (TransducerM step begin done) = TransducerM (\s i -> g (step s i)) (g begin) (g . done)
 
+{-| Changes the base monad used by a 'FoldM'.		
+
+-}
 hoistFold :: Monad m => (forall a. m a -> n a) -> FoldM m i r -> FoldM n i r 
 hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g . done)
 
@@ -260,6 +275,14 @@ foldsM splitter f = groupsM splitter (transduceM (chokepointM f))
 
 ------------------------------------------------------------------------------
 
+{-| Splits a stream into chunks of fixed size.		
+
+>>> L.fold (folds (chunksOf 2) L.list L.list) [1,2,3,4,5,6,7]
+[[1,2],[3,4],[5,6],[7]]
+
+>>> L.fold (groups (chunksOf 2) (transduce (surround [] [0])) L.list) [1,2,3,4,5,6,7]
+[1,2,0,3,4,0,5,6,0,7,0]
+-}
 chunksOf :: Int -> Splitter a
 chunksOf 0 = Splitter (\_ _ -> ((),[],repeat [])) () (error "never happens")
 chunksOf groupSize = Splitter step groupSize done 
