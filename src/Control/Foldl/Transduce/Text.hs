@@ -31,6 +31,13 @@ import qualified Control.Foldl.Transduce as L
 import Control.Foldl.Transduce.Internal (Pair(..))
 import qualified Control.Foldl.Text as T
 
+{- $setup
+
+>>> import qualified Control.Foldl as L
+>>> import Control.Foldl.Transduce
+
+-}
+
 decoder :: (B.ByteString -> T.Decoding) -> T.OnDecodeError -> L.Transducer B.ByteString T.Text ()
 decoder _step onLeftovers = L.Transducer step (Pair mempty _step) done
     where

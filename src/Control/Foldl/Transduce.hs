@@ -80,9 +80,20 @@ instance Monad m => Extend (FoldM m a) where
 
 ------------------------------------------------------------------------------
 
+{-| A (possibly stateful) transformation on the inputs of a 'Fold'.
+
+    Functions constructed with combinators like 'L.premap' of 'Control.Foldl'
+    also typecheck as 'Transduction'.
+-}
 type Transduction a b = forall x. Fold b x -> Fold a x
 
 
+{-| Representation of a stateful 'Transduction' with step function, an initial
+    accumulator, and a extraction function that returns a summary value of type
+    @r@. Both the step function and the extraction function may send output
+    downstream.
+
+-}
 data Transducer i o r
      = forall x. Transducer (x -> i -> (x,[o])) x (x -> (r,[o]))
 
@@ -96,6 +107,9 @@ instance Bifunctor (Transducer i) where
 
 type TransductionM m a b = forall x. Monad m => FoldM m b x -> FoldM m a x
 
+{-| Like 'Transducer', but monadic.
+
+-}
 data TransducerM m i o r
      = forall x. TransducerM (x -> i -> m (x,[o])) (m x) (x -> m (r,[o]))
 
@@ -107,9 +121,21 @@ instance Functor m => Bifunctor (TransducerM m i) where
         TransducerM (fmap (fmap (fmap (fmap f))) . step) begin (fmap (fmap (fmap f)) . done)
     second f w = fmap f w
 
+{-| Apply a 'Transducer' to a 'Fold', discarding the return value of the
+    'Transducer'.		
+
+>>> L.fold (transduce (Transducer (\_ i -> ((),[i])) () (\_ -> ('r',[]))) L.list) [1..7]
+[1,2,3,4,5,6,7]
+-}
 transduce :: Transducer i o r -> Transduction i o 
 transduce = transduce' (flip const) 
 
+{-| Generalized version of 'transduce' than doesn't ignore the return value of
+    the 'Transducer'.
+
+>>> L.fold (transduce' (,) (Transducer (\_ i -> ((),[i])) () (\_ -> ('r',[]))) L.list) [1..7]
+('r',[1,2,3,4,5,6,7])
+-}
 transduce' :: (x -> y -> z) -> Transducer i o x -> Fold o y -> Fold i z
 transduce' f (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
     Fold step (Pair wstate fstate) done 
@@ -250,9 +276,25 @@ hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g 
 
 ------------------------------------------------------------------------------
 
+{-| A method for splitting a stream into delimited segments. It is
+    composed of a step function, an initial state, and a "done" function that
+    may flush some accumulated output downstream.
+
+    The step function returns a triplet of:
+
+    * The new internal state.
+    * Output that continues the last segment detected in the previous step.
+    * A list of lists containing new segments detected in the current step. If
+      the list is empty, that means no splitting has taken place in the current
+      step.
+-}
 data Splitter i
      = forall x. Splitter (x -> i -> (x,[i],[[i]])) x (x -> [i])
 
+{-| Applies a 'Transduction' to all groups detected by a 'Splitter', returning
+    a 'Transduction' that works over the undivided stream of inputs.		
+
+-}
 groups :: Splitter i -> Transduction i b -> Transduction i b 
 groups (Splitter sstep sbegin sdone) t f =
     Fold step (Pair sbegin (t (duplicate f))) done 
@@ -287,6 +329,10 @@ groupsM (Splitter sstep sbegin sdone) t f =
             finalf <- fdone =<< flip (foldlM fstep) (sdone ss) =<< fstate
             L.foldM finalf [] 
 
+{-| Summarizes each group detected by a 'Splitter' using a 'Fold', returning a
+    'Transduction' that allows a 'Fold' to accept the original ungrouped input. 
+
+-}
 folds :: Splitter i -> Fold i b -> Transduction i b
 folds splitter f = groups splitter (transduce (chokepoint f))
 
