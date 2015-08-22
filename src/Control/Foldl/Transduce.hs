@@ -277,10 +277,10 @@ foldsM splitter f = groupsM splitter (transduceM (chokepointM f))
 
 {-| Splits a stream into chunks of fixed size.		
 
->>> L.fold (folds (chunksOf 2) L.list L.list) [1,2,3,4,5,6,7]
+>>> L.fold (folds (chunksOf 2) L.list L.list) [1..7]
 [[1,2],[3,4],[5,6],[7]]
 
->>> L.fold (groups (chunksOf 2) (transduce (surround [] [0])) L.list) [1,2,3,4,5,6,7]
+>>> L.fold (groups (chunksOf 2) (transduce (surround [] [0])) L.list) [1..7]
 [1,2,0,3,4,0,5,6,0,7,0]
 -}
 chunksOf :: Int -> Splitter a
