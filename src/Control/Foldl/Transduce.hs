@@ -82,7 +82,7 @@ instance Monad m => Extend (FoldM m a) where
 
 {-| A (possibly stateful) transformation on the inputs of a 'Fold'.
 
-    Functions constructed with combinators like 'L.premap' of 'Control.Foldl'
+    Functions constructed with combinators like 'L.premap' of "Control.Foldl"
     also typecheck as 'Transduction'.
 -}
 type Transduction a b = forall x. Fold b x -> Fold a x
@@ -277,7 +277,7 @@ hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g 
 ------------------------------------------------------------------------------
 
 {-| A method for splitting a stream into delimited segments. It is
-    composed of a step function, an initial state, and a "done" function that
+    composed of a step function, an initial state, and a /done/ function that
     may flush some accumulated output downstream.
 
     The step function returns a triplet of:
