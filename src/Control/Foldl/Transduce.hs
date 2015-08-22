@@ -23,7 +23,6 @@ module Control.Foldl.Transduce (
     ,   foldifyM
     ,   chokepoint 
     ,   chokepointM
-    ,   duplicateM
     ,   hoistTransducer
     ,   hoistFold
         -- * Splitter types
@@ -37,11 +36,13 @@ module Control.Foldl.Transduce (
     ,   chunksOf
         -- * Re-exports
         -- $reexports
+    ,   module Data.Functor.Extend
     ,   module Control.Foldl
     ) where
 
 import Data.Bifunctor
 import Data.Functor.Identity
+import Data.Functor.Extend
 import Data.Foldable (foldlM,foldl',toList)
 import Control.Monad
 import Control.Monad.IO.Class
@@ -62,11 +63,20 @@ import Control.Foldl.Transduce.Internal(Pair(..))
 #if !(MIN_VERSION_foldl(1,1,2))
 instance Comonad (Fold a) where
     extract (Fold _ begin done) = done begin
-    {-#  INLINABLE extract #-}
+    {-# INLINABLE extract #-}
 
     duplicate (Fold step begin done) = Fold step begin (\x -> Fold step x done)
-    {-#  INLINABLE duplicate #-}
+    {-# INLINABLE duplicate #-}
 #endif
+
+instance Extend (Fold a) where
+    duplicated f = duplicate f
+    {-# INLINABLE duplicated #-}
+
+instance Monad m => Extend (FoldM m a) where
+    duplicated (FoldM step begin done) = 
+        FoldM step begin (\x -> pure (FoldM step (pure x) done))
+    {-# INLINABLE duplicated #-}
 
 ------------------------------------------------------------------------------
 
@@ -176,6 +186,9 @@ surroundIO prefixa suffixa =
 
 ------------------------------------------------------------------------------
 
+{-| Generalize a 'Transducer' to a 'TransducerM'.		
+
+-}
 generalize' :: Monad m => Transducer i o r -> TransducerM m i o r
 generalize' (Transducer step begin done) = TransducerM step' begin' done'
   where
@@ -183,12 +196,19 @@ generalize' (Transducer step begin done) = TransducerM step' begin' done'
     begin'    = return  begin
     done' x   = return (done x)
 
+{-| Simplify a pure 'TransducerM' to a 'Transducer'.		
+
+-}
 simplify' :: TransducerM Identity i o r -> Transducer i o r
 simplify' (TransducerM step begin done) = Transducer step' begin' done' where
     step' x a = runIdentity (step x a)
     begin'    = runIdentity  begin
     done' x   = runIdentity (done x)
 
+{-| Transforms a 'Transducer' into a 'Fold' by forgetting about the data sent
+    downstream.		
+
+-}
 foldify :: Transducer i o r -> Fold i r
 foldify (Transducer step begin done) =
     Fold (\x i -> fst (step x i)) begin (\x -> fst (done x))
@@ -197,6 +217,10 @@ foldifyM :: Functor m => TransducerM m i o r -> FoldM m i r
 foldifyM (TransducerM step begin done) =
     FoldM (\x i -> fmap fst (step x i)) begin (\x -> fmap fst (done x))
 
+{-| Transforms a 'Fold' into a 'Transducer' that sends the return value of the
+    'Fold' downstream when upstream closes.		
+
+-}
 chokepoint :: Fold i b -> Transducer i b ()
 chokepoint (Fold fstep fstate fdone) =
     (Transducer wstep fstate wdone)
@@ -211,10 +235,6 @@ chokepointM (FoldM fstep fstate fdone) =
         wstep = \fstate' i -> fmap (\s -> (s,[])) (fstep fstate' i)
         wdone = \fstate' -> fmap (\r -> ((),[r])) (fdone fstate')
 
-duplicateM :: Applicative m => FoldM m a b -> FoldM m a (FoldM m a b)
-duplicateM (FoldM step begin done) = 
-    FoldM step begin (\x -> pure (FoldM step (pure x) done))
-{-#  INLINABLE duplicateM #-}
 
 {-| Changes the base monad used by a 'TransducerM'.		
 
@@ -251,7 +271,7 @@ groups (Splitter sstep sbegin sdone) t f =
 
 groupsM :: Monad m => Splitter i -> TransductionM m i b -> TransductionM m i b
 groupsM (Splitter sstep sbegin sdone) t f = 
-    FoldM step (return (Pair sbegin (t (duplicateM f)))) done        
+    FoldM step (return (Pair sbegin (t (duplicated f)))) done        
     where
         step (Pair ss fs) i = do
              let 
@@ -259,10 +279,10 @@ groupsM (Splitter sstep sbegin sdone) t f =
              fs' <- step' fs oldSplit
              fs'' <- foldlM step'' fs' newSplits
              return (Pair ss' fs'')
-        step' = L.foldM . duplicateM
+        step' = L.foldM . duplicated
         step'' = \fs is -> reset fs >>= \fs' -> step' fs' is
         reset (FoldM _ fstate fdone) = 
-           liftM (t . duplicateM) (fstate >>= fdone) 
+           liftM (t . duplicated) (fstate >>= fdone) 
         done (Pair ss (FoldM fstep fstate fdone)) = do
             finalf <- fdone =<< flip (foldlM fstep) (sdone ss) =<< fstate
             L.foldM finalf [] 
