@@ -75,7 +75,7 @@ instance Extend (Fold a) where
 
 instance Monad m => Extend (FoldM m a) where
     duplicated (FoldM step begin done) = 
-        FoldM step begin (\x -> pure (FoldM step (pure x) done))
+        FoldM step begin (\x -> pure $! FoldM step (pure x) done)
     {-# INLINABLE duplicated #-}
 
 ------------------------------------------------------------------------------
@@ -113,10 +113,15 @@ type TransductionM m a b = forall x. Monad m => FoldM m b x -> FoldM m a x
 data TransducerM m i o r
      = forall x. TransducerM (x -> i -> m (x,[o])) (m x) (x -> m (r,[o]))
 
-instance Functor m => Functor (TransducerM m i o) where
-    fmap f (TransducerM step begin done) = TransducerM step begin (fmap (first f) . done)
+instance Monad m => Functor (TransducerM m i o) where
+    fmap f (TransducerM step begin done) = TransducerM step begin done'
+      where
+        done' x = do
+            (r,os) <- done x
+            let r' = f r
+            return $! (r' `seq` (r', os))
 
-instance Functor m => Bifunctor (TransducerM m i) where
+instance Monad m => Bifunctor (TransducerM m i) where
     first f (TransducerM step begin done) =
         TransducerM (fmap (fmap (fmap (fmap f))) . step) begin (fmap (fmap (fmap f)) . done)
     second f w = fmap f w
@@ -159,10 +164,12 @@ transduceM' f (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
         where
             step (Pair ws fs) i = do
                 (ws',os) <- wstep ws i
-                liftM (Pair ws') (foldlM fstep fs os)
+                fs' <- foldlM fstep fs os
+                return $! Pair ws' fs'
             done (Pair ws fs) = do
                 (wr,os) <- wdone ws
-                liftM (f wr) (fdone =<< foldlM fstep fs os)
+                fr <- fdone =<< foldlM fstep fs os
+                return $! f wr fr
 
 ------------------------------------------------------------------------------
 
@@ -320,7 +327,7 @@ groupsM (Splitter sstep sbegin sdone) t f =
                  (ss', oldSplit, newSplits) = sstep ss i
              fs' <- step' fs oldSplit
              fs'' <- foldlM step'' fs' newSplits
-             return (Pair ss' fs'')
+             return $! Pair ss' fs''
         step' = L.foldM . duplicated
         step'' = \fs is -> reset fs >>= \fs' -> step' fs' is
         reset (FoldM _ fstate fdone) = 
