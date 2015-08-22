@@ -49,6 +49,15 @@ import Control.Foldl (Fold(..),FoldM(..))
 import qualified Control.Foldl as L
 import Control.Foldl.Transduce.Internal(Pair(..))
 
+{- $setup
+
+>>> import qualified Control.Foldl as L
+>>> import Control.Foldl.Transduce
+
+-}
+
+------------------------------------------------------------------------------
+
 instance Comonad (Fold a) where
     extract (Fold _ begin done) = done begin
     {-#  INLINABLE extract #-}
@@ -120,6 +129,11 @@ transduceM' f (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
 
 data SurroundState = PrefixAdded | PrefixPending
 
+{-| Adds a prefix and a suffix to the stream arriving into a 'Fold'.		
+
+>>> L.fold (transduce (surround "prefix" "suffix") L.list) "middle"
+"prefixmiddlesuffix"
+-}
 surround :: (Foldable p, Foldable s) => p a -> s a -> Transducer a a ()
 surround (toList -> ps) (toList -> ss) = 
     Transducer step PrefixPending done 
