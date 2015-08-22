@@ -169,8 +169,8 @@ stripStart = L.Transducer step False done
 {-| Remove trailing white space from a stream of 'Text'.		
 
     __/BEWARE!/__ 
-    This function naively accumulates in memory arriving "blank blocks" of text
-    until a non-blank block or end-of-stream arrives, and thereforw is
+    This function naively accumulates in memory any arriving "blank blocks" of
+    text until a non-blank block or end-of-stream arrives, and therefore it is
     potentially dangerous. Do not use with untrusted inputs.
 
 >>> L.fold (transduce stripEnd L.list) (map T.pack [" ", "   text ", "   ", "" , " "])

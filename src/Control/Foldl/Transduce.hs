@@ -276,7 +276,7 @@ hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g 
 
 ------------------------------------------------------------------------------
 
-{-| A method for splitting a stream into delimited segments. It is
+{-| A procedure for splitting a stream into delimited segments. It is
     composed of a step function, an initial state, and a /done/ function that
     may flush some accumulated output downstream.
 
