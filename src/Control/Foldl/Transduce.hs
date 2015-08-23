@@ -2,6 +2,11 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE CPP #-}
 
+-- |
+--
+-- This module builds on module "Control.Foldl", adding stateful transducers
+-- and grouping operations.
+
 module Control.Foldl.Transduce (
         -- * Transducer types
         Transduction 
@@ -27,7 +32,7 @@ module Control.Foldl.Transduce (
     ,   hoistFold
         -- * Splitter types
     ,   Splitter(..)
-        -- * Working transduce groups
+        -- * Working with groups
     ,   groups
     ,   groupsM
     ,   folds

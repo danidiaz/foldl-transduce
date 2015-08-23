@@ -1,5 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+-- |
+--
+-- This module builds on module "Control.Foldl.Text", adding stateful
+-- transducers and grouping operations.
 module Control.Foldl.Transduce.Text (
         -- * Decoding transducers
         decoder
