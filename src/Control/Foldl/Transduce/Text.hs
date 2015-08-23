@@ -65,7 +65,7 @@ decoder _step onLeftovers = L.Transducer step (Pair mempty _step) done
     onLeftovers' = onLeftovers "leftovers" Nothing
 
 {-| Builds a UTF8-decoding 'Transducer'. Takes an error handler from
-    'Data.Text.Encoding.Error'.		
+    "Data.Text.Encoding.Error".		
 
 -}
 utf8 :: T.OnDecodeError -> L.Transducer B.ByteString T.Text ()
