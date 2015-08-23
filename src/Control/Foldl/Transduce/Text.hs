@@ -177,8 +177,8 @@ stripStart = L.Transducer step False done
     text until a non-blank block or end-of-stream arrives, and therefore it is
     potentially dangerous. Do not use with untrusted inputs.
 
->>> L.fold (transduce stripEnd L.list) (map T.pack [" ", "   text ", "   ", "" , " "])
-[" ","   text"]
+>>> L.fold (transduce stripEnd L.list) (map T.pack [" ", " \n  text ", "   ", "" , " "])
+[" "," \n  text"]
 -}
 stripEnd :: L.Transducer T.Text T.Text ()
 stripEnd = L.Transducer step [] done
