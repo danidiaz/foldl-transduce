@@ -30,10 +30,8 @@ import qualified Data.Text.Encoding.Error as T
 import Control.Monad.Trans.Except
 import Control.Monad.IO.Class
 import Control.Exception.Base 
-import qualified Control.Foldl as L
 import qualified Control.Foldl.Transduce as L
 import Control.Foldl.Transduce.Internal (Pair(..))
-import qualified Control.Foldl.Text as T
 
 {- $setup
 

@@ -309,7 +309,7 @@ data Splitter i
 -}
 groups :: Splitter i -> Transduction i b -> Transduction i b 
 groups (Splitter sstep sbegin sdone) t f =
-    Fold step (Pair sbegin (t (duplicate f))) done 
+    Fold step (Pair sbegin (t (duplicated f))) done 
     where
         step (Pair ss fs) i = 
            let 
@@ -317,9 +317,9 @@ groups (Splitter sstep sbegin sdone) t f =
                fs' = foldl' (step' . reset) (step' fs oldSplit) newSplits
            in
            Pair ss' fs'
-        step' = L.fold . duplicate
+        step' = L.fold . duplicated
         reset (Fold _ fstate fdone) = 
-           t (duplicate (fdone fstate)) 
+           t (duplicated (fdone fstate)) 
         done (Pair ss (Fold fstep fstate fdone)) = 
             extract (fdone (foldl' fstep fstate (sdone ss)))
 
