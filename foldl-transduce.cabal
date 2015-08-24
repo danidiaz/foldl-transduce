@@ -9,8 +9,7 @@ Author: Daniel Diaz
 Maintainer: diaz_carrete@yahoo.com
 Bug-Reports: https://github.com/danidiaz/foldl-transduce/issues
 Synopsis: Transducers for folds from foldl.
-Description: Stateful transducers and streaming-preserving grouping operations
-for the folds from the foldl package.
+Description: Stateful transducers and streaming-preserving grouping operations for the folds from the foldl package.
 Category: Control
 Source-Repository head
     Type: git
