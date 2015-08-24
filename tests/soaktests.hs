@@ -8,6 +8,7 @@ import qualified Control.Foldl as L
 import Control.Foldl.Transduce
 import Control.Foldl.Transduce.Text
 import Control.Concurrent.Async
+import Control.Exception
 
 import System.IO
 
@@ -22,8 +23,14 @@ testGroupIO = fmap show $
                 foldsM (chunksOf 7) (L.generalize L.list) (L.handlesM traverse (toHandle h1)) *>
                 foldsM (chunksOf 3) (L.generalize L.list) (L.handlesM traverse (toHandle h2))
 
+testPureGroup :: IO String
+testPureGroup = evaluate . show $
+    flip L.fold (cycle [1,-1]) $
+        (+) <$> groups (chunksOf 3) (transduce (surround [0::Int] [0,0])) L.sum <*>
+                groups (chunksOf 7) (transduce (surround [0,0] [0])) L.sum
+
 concurrenTests :: [IO String]
-concurrenTests = [testGroupIO]
+concurrenTests = [testGroupIO,testPureGroup]
 
 main :: IO ()
 main = do
