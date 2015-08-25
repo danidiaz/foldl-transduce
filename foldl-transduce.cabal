@@ -1,5 +1,5 @@
 Name: foldl-transduce
-Version: 0.1.0.0
+Version: 0.1.0.1
 Cabal-Version: >=1.8.0.2
 Build-Type: Simple
 License: BSD3
@@ -11,6 +11,11 @@ Bug-Reports: https://github.com/danidiaz/foldl-transduce/issues
 Synopsis: Transducers for folds from foldl.
 Description: Stateful transducers and streaming-preserving grouping operations for the folds in the foldl package.
 Category: Control
+
+Extra-Source-Files:
+    README.md
+    CHANGELOG
+
 Source-Repository head
     Type: git
     Location: git@github.com:danidiaz/foldl-transduce.git
