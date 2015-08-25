@@ -87,8 +87,8 @@ instance Monad m => Extend (FoldM m a) where
 
 {-| A (possibly stateful) transformation on the inputs of a 'Fold'.
 
-    Functions constructed with combinators like 'L.premap' of "Control.Foldl"
-    also typecheck as 'Transduction'.
+    Functions constructed with combinators like 'L.premap' or 'L.handles' from
+    "Control.Foldl" also typecheck as a 'Transduction'.
 -}
 type Transduction a b = forall x. Fold b x -> Fold a x
 
