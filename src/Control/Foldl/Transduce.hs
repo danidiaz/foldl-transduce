@@ -22,8 +22,8 @@ module Control.Foldl.Transduce (
     ,   surround
     ,   surroundIO
         -- * Transducer utilities
-    ,   generalize'
-    ,   simplify'
+    ,   generalizeTransducer
+    ,   simplifyTransducer
     ,   foldify
     ,   foldifyM
     ,   chokepoint 
@@ -138,16 +138,16 @@ instance Monad m => Bifunctor (TransducerM m i) where
 [1,2,3,4,5,6,7]
 -}
 transduce :: Transducer i o r -> Transduction i o 
-transduce = transduce' (flip const) 
+transduce t = fmap snd . (transduce' t)
 
-{-| Generalized version of 'transduce' than doesn't ignore the return value of
+{-| Generalized version of 'transduce' that preserves the return value of
     the 'Transducer'.
 
->>> L.fold (transduce' (,) (Transducer (\_ i -> ((),[i])) () (\_ -> ('r',[]))) L.list) [1..7]
+>>> L.fold (transduce' (Transducer (\_ i -> ((),[i])) () (\_ -> ('r',[]))) L.list) [1..7]
 ('r',[1,2,3,4,5,6,7])
 -}
-transduce' :: (x -> y -> z) -> Transducer i o x -> Fold o y -> Fold i z
-transduce' f (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
+transduce' :: Transducer i o x -> Fold o y -> Fold i (x,y)
+transduce' (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
     Fold step (Pair wstate fstate) done 
         where
             step (Pair ws fs) i = 
@@ -157,14 +157,14 @@ transduce' f (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
             done (Pair ws fs) = 
                 let (wr,os) = wdone ws
                 in 
-                f wr (fdone (foldl' fstep fs os))
+                (,) wr (fdone (foldl' fstep fs os))
 
 
 transduceM :: Monad m => TransducerM m i o r -> TransductionM m i o 
-transduceM = transduceM' (flip const)
+transduceM t = fmap snd . (transduceM' t)
 
-transduceM' :: Monad m => (x -> y -> z) -> TransducerM m i o x -> FoldM m o y -> FoldM m i z
-transduceM' f (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
+transduceM' :: Monad m => TransducerM m i o x -> FoldM m o y -> FoldM m i (x,y)
+transduceM' (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
     FoldM step (liftM2 Pair wstate fstate) done 
         where
             step (Pair ws fs) i = do
@@ -174,7 +174,7 @@ transduceM' f (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
             done (Pair ws fs) = do
                 (wr,os) <- wdone ws
                 fr <- fdone =<< foldlM fstep fs os
-                return $! f wr fr
+                return $! (,) wr fr
 
 ------------------------------------------------------------------------------
 
@@ -227,8 +227,8 @@ surroundIO prefixa suffixa =
 {-| Generalize a 'Transducer' to a 'TransducerM'.		
 
 -}
-generalize' :: Monad m => Transducer i o r -> TransducerM m i o r
-generalize' (Transducer step begin done) = TransducerM step' begin' done'
+generalizeTransducer :: Monad m => Transducer i o r -> TransducerM m i o r
+generalizeTransducer (Transducer step begin done) = TransducerM step' begin' done'
   where
     step' x a = return (step x a)
     begin'    = return  begin
@@ -237,8 +237,8 @@ generalize' (Transducer step begin done) = TransducerM step' begin' done'
 {-| Simplify a pure 'TransducerM' to a 'Transducer'.		
 
 -}
-simplify' :: TransducerM Identity i o r -> Transducer i o r
-simplify' (TransducerM step begin done) = Transducer step' begin' done' where
+simplifyTransducer :: TransducerM Identity i o r -> Transducer i o r
+simplifyTransducer (TransducerM step begin done) = Transducer step' begin' done' where
     step' x a = runIdentity (step x a)
     begin'    = runIdentity  begin
     done' x   = runIdentity (done x)

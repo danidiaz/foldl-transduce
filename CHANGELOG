@@ -1,0 +1,7 @@
+0.1.1.0
+=======
+
+- Changed signatures of transduce' and transduceM'.
+- generalize' -> generalizeTransducer
+- simplify' -> simplifyTransducer
+- dropped direct profunctors dependency.

@@ -34,5 +34,5 @@ concurrenTests = [testGroupIO,testPureGroup]
 
 main :: IO ()
 main = do
-    rs <- runConcurrently (sequence (fmap Concurrently concurrenTests))
+    rs <- runConcurrently (mapM Concurrently concurrenTests)
     mapM_ putStrLn rs
