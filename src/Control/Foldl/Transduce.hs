@@ -393,9 +393,17 @@ groupsM' (Splitter sstep sbegin sdone) summarizer t f =
         step (Trio ss summarizer' fs) i = do
             let 
                 (ss', oldSplit, newSplits) = sstep ss i
-            return $! Trio ss' undefined undefined
+            fs' <- step' fs oldSplit
+            (summarizer'',fs'') <- foldlM step'' (summarizer',fs') newSplits
+            return $! Trio ss' summarizer'' fs''
 
         step' = L.foldM . duplicated
+
+        step'' = \(summarizer_, fs) is -> do
+            (u,fs') <- reset fs 
+            u' <- L.foldM (duplicated summarizer_) [u]
+            fs'' <- step' fs' is
+            return $! (u',fs'') 
 
         reset (FoldM _ fstate fdone) = do
            (u,x) <- fdone =<< fstate 
