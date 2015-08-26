@@ -27,6 +27,7 @@ import qualified Data.Text
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T
+import Control.Applicative
 import Control.Monad.Trans.Except
 import Control.Monad.IO.Class
 import Control.Exception.Base 
@@ -37,6 +38,7 @@ import Control.Foldl.Transduce.Internal (Pair(..))
 
 >>> import Data.String hiding (lines)
 >>> import Data.Text (Text)
+>>> import Control.Applicative
 >>> import Control.Monad.Trans.Except
 >>> import qualified Control.Foldl as L
 >>> import Control.Foldl.Transduce

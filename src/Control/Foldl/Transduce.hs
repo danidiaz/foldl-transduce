@@ -52,7 +52,8 @@ module Control.Foldl.Transduce (
 import Data.Bifunctor
 import Data.Functor.Identity
 import Data.Functor.Extend
-import Data.Foldable (foldlM,foldl',toList)
+import Data.Foldable (Foldable,foldlM,foldl',toList)
+import Control.Applicative
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Comonad
