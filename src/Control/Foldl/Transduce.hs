@@ -390,7 +390,17 @@ groupsM' :: Monad m => Splitter i -> FoldM m u v -> TransductionM' m i a u -> Tr
 groupsM' (Splitter sstep sbegin sdone) summarizer t f =
     FoldM step (return (Trio sbegin summarizer (t (duplicated f)))) done        
     where
-        step (Trio ss summarizer' fs) i = undefined
+        step (Trio ss summarizer' fs) i = do
+            let 
+                (ss', oldSplit, newSplits) = sstep ss i
+            return $! Trio ss' undefined undefined
+
+        step' = L.foldM . duplicated
+
+        reset (FoldM _ fstate fdone) = do
+           (u,x) <- fdone =<< fstate 
+           return (u, t . duplicated $ x)
+
         done (Trio ss summarizer' (FoldM fstep fstate fdone)) = do
             (u,finalf) <- fdone =<< flip (foldlM fstep) (sdone ss) =<< fstate
             v <- L.foldM summarizer' [u]
