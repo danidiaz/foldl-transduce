@@ -58,12 +58,13 @@ import Control.Monad.IO.Class
 import Control.Comonad
 import Control.Foldl (Fold(..),FoldM(..))
 import qualified Control.Foldl as L
-import Control.Foldl.Transduce.Internal(Pair(..),Trio(..))
+import Control.Foldl.Transduce.Internal (Pair(..),Trio(..))
 
 {- $setup
 
 >>> import qualified Control.Foldl as L
 >>> import Control.Foldl.Transduce
+>>> import Control.Applicative
 
 -}
 
@@ -318,6 +319,8 @@ data Splitter i
 {-| Applies a 'Transduction' to all groups detected by a 'Splitter', returning
     a 'Transduction' that works over the undivided stream of inputs.		
 
+>>> L.fold (groups (chunksOf 2) (transduce (surround "<" ">")) L.list) "aabbccdd"
+"<aa><bb><cc><dd>"
 -}
 groups :: Splitter i -> Transduction i b -> Transduction i b 
 groups (Splitter sstep sbegin sdone) t f =
@@ -341,6 +344,9 @@ groups (Splitter sstep sbegin sdone) t f =
 
     In practice, this function behaves like a combinaton of 'groups' and
     'folds' that works in a single pass.
+
+>>> L.fold (groups' (chunksOf 2) L.list (\f -> transduce (surround "<" ">") (liftA2 (,) L.list f)) L.list) "aabbccdd"
+(["<aa>","<bb>","<cc>","<dd>"],"<aa><bb><cc><dd>")
 -}
 groups' :: Splitter i 
         -> Fold u v -- ^ for aggregating the @u@ values produced for each group
