@@ -86,7 +86,7 @@ instance Extend (Fold a) where
 
 instance Monad m => Extend (FoldM m a) where
     duplicated (FoldM step begin done) = 
-        FoldM step begin (\x -> pure $! FoldM step (pure x) done)
+        FoldM step begin (\x -> return $! FoldM step (return x) done)
     {-# INLINABLE duplicated #-}
 
 ------------------------------------------------------------------------------
@@ -140,7 +140,7 @@ instance Monad m => Functor (TransducerM m i o) where
             let r' = f r
             return $! (r' `seq` (r', os))
 
-instance Monad m => Bifunctor (TransducerM m i) where
+instance (Functor m, Monad m) => Bifunctor (TransducerM m i) where
     first f (TransducerM step begin done) =
         TransducerM (fmap (fmap (fmap (fmap f))) . step) begin (fmap (fmap (fmap f)) . done)
     second f w = fmap f w
@@ -216,7 +216,7 @@ surround (toList -> ps) (toList -> ss) =
 >>> L.foldM (transduceM (surroundIO (return "prefix") (return "suffix")) (L.generalize L.list)) "middle"
 "prefixmiddlesuffix"
 -}
-surroundIO :: (Foldable p, Foldable s, MonadIO m) 
+surroundIO :: (Foldable p, Foldable s, Functor m, MonadIO m) 
            => m (p a) 
            -> m (s a) 
            -> TransducerM m a a ()
@@ -429,7 +429,7 @@ groupsM' (Splitter sstep sbegin sdone) summarizer t f =
 folds :: Splitter i -> Fold i b -> Transduction i b
 folds splitter f = groups splitter (transduce (chokepoint f))
 
-foldsM :: Splitter i -> FoldM m i b -> TransductionM m i b
+foldsM :: (Applicative m,Monad m) => Splitter i -> FoldM m i b -> TransductionM m i b
 foldsM splitter f = groupsM splitter (transduceM (chokepointM f))
 
 ------------------------------------------------------------------------------

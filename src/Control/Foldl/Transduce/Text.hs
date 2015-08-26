@@ -22,6 +22,8 @@ module Control.Foldl.Transduce.Text (
 
 import Prelude hiding (lines)
 import Data.Char
+import Data.Monoid (mempty)
+import Data.Foldable (foldMap)
 import qualified Data.ByteString as B
 import qualified Data.Text 
 import qualified Data.Text as T
@@ -110,7 +112,7 @@ utf8strict = utf8 T.strictDecode
 decoderE :: MonadIO m
          => (T.OnDecodeError -> B.ByteString -> T.Decoding)
          -> L.TransducerM (ExceptT T.UnicodeException m) B.ByteString T.Text ()   
-decoderE next = L.TransducerM step (pure (Pair mempty next')) done
+decoderE next = L.TransducerM step (return (Pair mempty next')) done
     where
         step (Pair _ next1) i = do
             emc <- liftIO . try . evaluate $ next1 i 
@@ -128,7 +130,7 @@ decoderE next = L.TransducerM step (pure (Pair mempty next')) done
                         Left ue -> do
                             throwE ue
                         Right mc -> do
-                            return ((), foldMap (pure . T.singleton) mc)
+                            return ((), foldMap (return . T.singleton) mc)
         next' = next T.strictDecode  
         onLeftovers' = T.strictDecode "leftovers" Nothing
 
