@@ -10,8 +10,10 @@
 module Control.Foldl.Transduce (
         -- * Transducer types
         Transduction 
+    ,   Transduction' 
     ,   Transducer(..)
     ,   TransductionM
+    ,   TransductionM'
     ,   TransducerM(..)
         -- * Applying transducers
     ,   transduce
@@ -34,7 +36,9 @@ module Control.Foldl.Transduce (
     ,   Splitter(..)
         -- * Working with groups
     ,   groups
+    ,   groups'
     ,   groupsM
+    ,   groupsM'
     ,   folds
     ,   foldsM
         -- * Splitters
@@ -54,7 +58,7 @@ import Control.Monad.IO.Class
 import Control.Comonad
 import Control.Foldl (Fold(..),FoldM(..))
 import qualified Control.Foldl as L
-import Control.Foldl.Transduce.Internal(Pair(..))
+import Control.Foldl.Transduce.Internal(Pair(..),Trio(..))
 
 {- $setup
 
@@ -93,6 +97,12 @@ instance Monad m => Extend (FoldM m a) where
 type Transduction a b = forall x. Fold b x -> Fold a x
 
 
+{-| A more general from of 'Transduction' that adds new information to the
+    return value of the 'Fold'.
+
+-}
+type Transduction' a b r = forall x. Fold b x -> Fold a (r,x)
+
 {-| Representation of a stateful 'Transduction' with step function, an initial
     accumulator, and a extraction function that returns a summary value of type
     @r@. Both the step function and the extraction function may send output
@@ -111,6 +121,8 @@ instance Bifunctor (Transducer i) where
     second f w = fmap f w
 
 type TransductionM m a b = forall x. Monad m => FoldM m b x -> FoldM m a x
+
+type TransductionM' m a b r = forall x. FoldM m b x -> FoldM m a (r,x)
 
 {-| Like 'Transducer', but monadic.
 
@@ -146,7 +158,7 @@ transduce t = fmap snd . (transduce' t)
 >>> L.fold (transduce' (Transducer (\_ i -> ((),[i])) () (\_ -> ('r',[]))) L.list) [1..7]
 ('r',[1,2,3,4,5,6,7])
 -}
-transduce' :: Transducer i o x -> Fold o y -> Fold i (x,y)
+transduce' :: Transducer i o x -> Transduction' i o x
 transduce' (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
     Fold step (Pair wstate fstate) done 
         where
@@ -163,7 +175,7 @@ transduce' (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
 transduceM :: Monad m => TransducerM m i o r -> TransductionM m i o 
 transduceM t = fmap snd . (transduceM' t)
 
-transduceM' :: Monad m => TransducerM m i o x -> FoldM m o y -> FoldM m i (x,y)
+transduceM' :: Monad m => TransducerM m i o x -> TransductionM' m i o x
 transduceM' (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
     FoldM step (liftM2 Pair wstate fstate) done 
         where
@@ -323,6 +335,23 @@ groups (Splitter sstep sbegin sdone) t f =
         done (Pair ss (Fold fstep fstate fdone)) = 
             extract (fdone (foldl' fstep fstate (sdone ss)))
 
+groups' :: Splitter i -> Fold u v -> Transduction' i a u -> Transduction' i a v 
+groups' (Splitter sstep sbegin sdone) summarizer t f = undefined
+    Fold step (Trio sbegin summarizer (t (duplicated f))) done 
+      where 
+        step (Trio ss summs fs) i = 
+           let 
+               (ss', oldSplit, newSplits) = sstep ss i
+           in
+           Trio ss' _ _
+        reset (Fold _ fstate fdone) = 
+           t (duplicated (fdone fstate)) 
+        done (Trio ss summarizer' (Fold fstep fstate fdone)) = 
+            let (u,x) = extract (fdone (foldl' fstep fstate (sdone ss)))
+                -- single-stepping the summarizer
+                v = extract (L.fold summarizer' [u]) 
+            in (v,x)
+
 groupsM :: Monad m => Splitter i -> TransductionM m i b -> TransductionM m i b
 groupsM (Splitter sstep sbegin sdone) t f = 
     FoldM step (return (Pair sbegin (t (duplicated f)))) done        
@@ -340,6 +369,9 @@ groupsM (Splitter sstep sbegin sdone) t f =
         done (Pair ss (FoldM fstep fstate fdone)) = do
             finalf <- fdone =<< flip (foldlM fstep) (sdone ss) =<< fstate
             L.foldM finalf [] 
+
+groupsM' :: Splitter i -> Fold u v -> TransductionM' m i a u -> TransductionM' m i a v 
+groupsM' (Splitter sstep sbegin sdone) t f = undefined
 
 {-| Summarizes each group detected by a 'Splitter' using a 'Fold', returning a
     'Transduction' that allows a 'Fold' to accept the original ungrouped input. 
