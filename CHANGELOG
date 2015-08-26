@@ -1,4 +1,4 @@
-# 0._._._
+# 0.1.2.0
 - Added explicit bifunctors dependency.
 - Added Transduce', TransduceM' type synonyms.
 - Added groups', groupsM'.
