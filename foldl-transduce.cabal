@@ -8,7 +8,7 @@ Copyright: 2015 Daniel Diaz
 Author: Daniel Diaz
 Maintainer: diaz_carrete@yahoo.com
 Bug-Reports: https://github.com/danidiaz/foldl-transduce/issues
-Synopsis: Transducers for folds from foldl.
+Synopsis: Transducers for foldl folds.
 Description: Stateful transducers and streaming-preserving grouping operations for the folds in the foldl package.
 Category: Control
 
@@ -28,6 +28,7 @@ Library
         text          >= 0.11.2.0 && < 1.3 ,
         transformers  >= 0.2.0.0  && < 0.5 ,
         containers                   < 0.6 ,
+        bifunctors    == 5.*               ,
         semigroupoids >= 5.0               ,
         foldl         >= 1.1      && < 2   ,
         comonad       == 4.*

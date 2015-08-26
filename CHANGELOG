@@ -1,5 +1,7 @@
-0.1.1.0
-=======
+# 0._._._
+- Added explicit bifunctors dependency.
+
+# 0.1.1.0
 
 - Changed signatures of transduce' and transduceM'.
 - generalize' -> generalizeTransducer
