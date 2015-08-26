@@ -336,21 +336,27 @@ groups (Splitter sstep sbegin sdone) t f =
             extract (fdone (foldl' fstep fstate (sdone ss)))
 
 groups' :: Splitter i -> Fold u v -> Transduction' i a u -> Transduction' i a v 
-groups' (Splitter sstep sbegin sdone) summarizer t f = undefined
+groups' (Splitter sstep sbegin sdone) summarizer t f =
     Fold step (Trio sbegin summarizer (t (duplicated f))) done 
       where 
-        step (Trio ss summs fs) i = 
+        step (Trio ss summarizer' fs) i = 
            let 
                (ss', oldSplit, newSplits) = sstep ss i
+               (summarizer'',fs') = foldl' 
+                   (\(summarizer_,fs_) split_ -> 
+                       let (u, renewed) = reset fs_
+                       in (L.fold (duplicated summarizer_) [u], step' renewed split_))
+                   (summarizer', step' fs oldSplit) 
+                   newSplits
            in
-           Trio ss' _ _
+           Trio ss' summarizer'' fs'
+        step' = L.fold . duplicated
         reset (Fold _ fstate fdone) = 
-           t (duplicated (fdone fstate)) 
+           let (u,x) = fdone fstate
+           in (u,t (duplicated x))
         done (Trio ss summarizer' (Fold fstep fstate fdone)) = 
-            let (u,x) = extract (fdone (foldl' fstep fstate (sdone ss)))
-                -- single-stepping the summarizer
-                v = extract (L.fold summarizer' [u]) 
-            in (v,x)
+            let (u,extract -> x) = fdone (foldl' fstep fstate (sdone ss))
+            in (L.fold summarizer' [u],x)
 
 groupsM :: Monad m => Splitter i -> TransductionM m i b -> TransductionM m i b
 groupsM (Splitter sstep sbegin sdone) t f = 
