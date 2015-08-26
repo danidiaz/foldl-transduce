@@ -386,8 +386,12 @@ groupsM (Splitter sstep sbegin sdone) t f =
             finalf <- fdone =<< flip (foldlM fstep) (sdone ss) =<< fstate
             L.foldM finalf [] 
 
-groupsM' :: Splitter i -> Fold u v -> TransductionM' m i a u -> TransductionM' m i a v 
-groupsM' (Splitter sstep sbegin sdone) t f = undefined
+groupsM' :: Monad m => Splitter i -> Fold u v -> TransductionM' m i a u -> TransductionM' m i a v 
+groupsM' (Splitter sstep sbegin sdone) summarizer t f =
+    FoldM step (return (Trio sbegin summarizer (t (duplicated f)))) done        
+    where
+        step (Trio ss summarizer' fs) i = undefined
+        done (Trio ss summarizer' (FoldM fstep fstate fdone)) = undefined
 
 {-| Summarizes each group detected by a 'Splitter' using a 'Fold', returning a
     'Transduction' that allows a 'Fold' to accept the original ungrouped input. 
