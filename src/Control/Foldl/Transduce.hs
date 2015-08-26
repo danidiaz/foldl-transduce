@@ -335,7 +335,17 @@ groups (Splitter sstep sbegin sdone) t f =
         done (Pair ss (Fold fstep fstate fdone)) = 
             extract (fdone (foldl' fstep fstate (sdone ss)))
 
-groups' :: Splitter i -> Fold u v -> Transduction' i a u -> Transduction' i a v 
+{-| Generalized version of 'groups' that obtains a summary value for each
+    group, aggregates them into a summary value for the whole stream, and puts
+    that information in the final result.		
+
+    In practice, this function behaves like a combinaton of 'groups' and
+    'folds' that works in a single pass.
+-}
+groups' :: Splitter i 
+        -> Fold u v -- ^ for aggregating the @u@ values produced for each group
+        -> Transduction' i a u 
+        -> Transduction' i a v -- ^ the resulting 'Fold' will return a summary @v@ of the stream
 groups' (Splitter sstep sbegin sdone) summarizer t f =
     Fold step (Trio sbegin summarizer (t (duplicated f))) done 
       where 
