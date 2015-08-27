@@ -32,8 +32,6 @@ module Control.Foldl.Transduce (
     ,   chokepointM
     ,   hoistTransducer
     ,   hoistFold
-        -- * Splitter types
-    ,   Splitter(..)
         -- * Working with groups
     ,   groups
     ,   groups'
@@ -50,6 +48,7 @@ module Control.Foldl.Transduce (
     ) where
 
 import Data.Bifunctor
+import Data.Monoid
 import Data.Functor.Identity
 import Data.Functor.Extend
 import Data.Foldable (Foldable,foldlM,foldl',toList)
@@ -110,16 +109,28 @@ type Transduction' a b r = forall x. Fold b x -> Fold a (r,x)
     @r@. Both the step function and the extraction function may send output
     downstream.
 
+
+    A procedure for splitting a stream into delimited segments. It is
+    composed of a step function, an initial state, and a /done/ function that
+    may flush some accumulated output downstream.
+
+    The step function returns a triplet of:
+
+    * The new internal state.
+    * Output that continues the last segment detected in the previous step.
+    * A list of lists containing new segments detected in the current step. If
+      the list is empty, that means no splitting has taken place in the current
+      step.
 -}
 data Transducer i o r
-     = forall x. Transducer (x -> i -> (x,[o])) x (x -> (r,[o]))
+     = forall x. Transducer (x -> i -> (x,[o],[[o]])) x (x -> (r,[o]))
 
 instance Functor (Transducer i o) where
     fmap f (Transducer step begin done) = Transducer step begin (first f . done)
 
 instance Bifunctor (Transducer i) where
     first f (Transducer step begin done) =
-        Transducer (fmap (fmap (fmap f)) . step) begin (fmap (fmap f) . done)
+        Transducer (fmap (\(x,xs,xss) -> (x,map f xs, map (map f) xss)) . step) begin (fmap (fmap f) . done)
     second f w = fmap f w
 
 type TransductionM m a b = forall x. Monad m => FoldM m b x -> FoldM m a x
@@ -130,7 +141,7 @@ type TransductionM' m a b r = forall x. FoldM m b x -> FoldM m a (r,x)
 
 -}
 data TransducerM m i o r
-     = forall x. TransducerM (x -> i -> m (x,[o])) (m x) (x -> m (r,[o]))
+     = forall x. TransducerM (x -> i -> m (x,[o],[[o]])) (m x) (x -> m (r,[o]))
 
 instance Monad m => Functor (TransducerM m i o) where
     fmap f (TransducerM step begin done) = TransducerM step begin done'
@@ -142,7 +153,7 @@ instance Monad m => Functor (TransducerM m i o) where
 
 instance (Functor m, Monad m) => Bifunctor (TransducerM m i) where
     first f (TransducerM step begin done) =
-        TransducerM (fmap (fmap (fmap (fmap f))) . step) begin (fmap (fmap (fmap f)) . done)
+        TransducerM (fmap (fmap (\(x,xs,xss) -> (x,map f xs, map (map f) xss))) . step) begin (fmap (fmap (fmap f)) . done)
     second f w = fmap f w
 
 {-| Apply a 'Transducer' to a 'Fold', discarding the return value of the
@@ -165,9 +176,9 @@ transduce' (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
     Fold step (Pair wstate fstate) done 
         where
             step (Pair ws fs) i = 
-                let (ws',os) = wstep ws i 
+                let (ws',os,oss) = wstep ws i 
                 in
-                Pair ws' (foldl' fstep fs os)  
+                Pair ws' (foldl' fstep fs (os++mconcat oss))  
             done (Pair ws fs) = 
                 let (wr,os) = wdone ws
                 in 
@@ -182,8 +193,8 @@ transduceM' (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
     FoldM step (liftM2 Pair wstate fstate) done 
         where
             step (Pair ws fs) i = do
-                (ws',os) <- wstep ws i
-                fs' <- foldlM fstep fs os
+                (ws',os,oss) <- wstep ws i
+                fs' <- foldlM fstep fs (os++mconcat oss)
                 return $! Pair ws' fs'
             done (Pair ws fs) = do
                 (wr,os) <- wdone ws
@@ -204,9 +215,9 @@ surround (toList -> ps) (toList -> ss) =
     Transducer step PrefixPending done 
     where
         step PrefixPending a = 
-            (PrefixAdded, ps ++ [a])
+            (PrefixAdded, ps ++ [a],[])
         step PrefixAdded a = 
-            (PrefixAdded, [a])
+            (PrefixAdded, [a],[])
         done PrefixPending = ((), ps ++ ss)
         done PrefixAdded = ((), ss)
 
@@ -225,9 +236,9 @@ surroundIO prefixa suffixa =
     where
         step PrefixPending a = do
             ps <- fmap toList prefixa
-            return (PrefixAdded, ps ++ [a])
+            return (PrefixAdded, ps ++ [a],[])
         step PrefixAdded a = 
-            return (PrefixAdded, [a])
+            return (PrefixAdded, [a],[])
         done PrefixPending = do
             ps <- fmap toList prefixa
             ss <- fmap toList suffixa
@@ -257,17 +268,20 @@ simplifyTransducer (TransducerM step begin done) = Transducer step' begin' done'
     begin'    = runIdentity  begin
     done' x   = runIdentity (done x)
 
+fstOf3 :: (a,b,c) -> a
+fstOf3 (x,_,_) = x
+
 {-| Transforms a 'Transducer' into a 'Fold' by forgetting about the data sent
     downstream.		
 
 -}
 foldify :: Transducer i o r -> Fold i r
 foldify (Transducer step begin done) =
-    Fold (\x i -> fst (step x i)) begin (\x -> fst (done x))
+    Fold (\x i -> fstOf3 (step x i)) begin (\x -> fst (done x))
 
 foldifyM :: Functor m => TransducerM m i o r -> FoldM m i r
 foldifyM (TransducerM step begin done) =
-    FoldM (\x i -> fmap fst (step x i)) begin (\x -> fmap fst (done x))
+    FoldM (\x i -> fmap fstOf3 (step x i)) begin (\x -> fmap fst (done x))
 
 {-| Transforms a 'Fold' into a 'Transducer' that sends the return value of the
     'Fold' downstream when upstream closes.		
@@ -277,14 +291,14 @@ chokepoint :: Fold i b -> Transducer i b ()
 chokepoint (Fold fstep fstate fdone) =
     (Transducer wstep fstate wdone)
     where
-        wstep = \fstate' i -> (fstep fstate' i,[])
+        wstep = \fstate' i -> (fstep fstate' i,[],[])
         wdone = \fstate' -> ((),[fdone fstate'])
 
 chokepointM :: Applicative m => FoldM m i b -> TransducerM m i b ()
 chokepointM (FoldM fstep fstate fdone) = 
     (TransducerM wstep fstate wdone)
     where
-        wstep = \fstate' i -> fmap (\s -> (s,[])) (fstep fstate' i)
+        wstep = \fstate' i -> fmap (\s -> (s,[],[])) (fstep fstate' i)
         wdone = \fstate' -> fmap (\r -> ((),[r])) (fdone fstate')
 
 
@@ -302,29 +316,14 @@ hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g 
 
 ------------------------------------------------------------------------------
 
-{-| A procedure for splitting a stream into delimited segments. It is
-    composed of a step function, an initial state, and a /done/ function that
-    may flush some accumulated output downstream.
-
-    The step function returns a triplet of:
-
-    * The new internal state.
-    * Output that continues the last segment detected in the previous step.
-    * A list of lists containing new segments detected in the current step. If
-      the list is empty, that means no splitting has taken place in the current
-      step.
--}
-data Splitter i
-     = forall x. Splitter (x -> i -> (x,[i],[[i]])) x (x -> [i])
-
 {-| Applies a 'Transduction' to all groups detected by a 'Splitter', returning
     a 'Transduction' that works over the undivided stream of inputs.		
 
 >>> L.fold (groups (chunksOf 2) (transduce (surround "<" ">")) L.list) "aabbccdd"
 "<aa><bb><cc><dd>"
 -}
-groups :: Splitter i -> Transduction i b -> Transduction i b 
-groups (Splitter sstep sbegin sdone) t f =
+groups :: Transducer i i' r -> Transduction i' b -> Transduction i b 
+groups (Transducer sstep sbegin sdone) t f =
     Fold step (Pair sbegin (t (duplicated f))) done 
     where
         step (Pair ss fs) i = 
@@ -337,7 +336,8 @@ groups (Splitter sstep sbegin sdone) t f =
         reset (Fold _ fstate fdone) = 
            t (duplicated (fdone fstate)) 
         done (Pair ss (Fold fstep fstate fdone)) = 
-            extract (fdone (foldl' fstep fstate (sdone ss)))
+            let (_,xss) = sdone ss in
+            extract (fdone (foldl' fstep fstate xss))
 
 {-| Generalized version of 'groups' that obtains a summary value for each
     group, aggregates them into a summary value for the whole stream, and puts
@@ -349,11 +349,11 @@ groups (Splitter sstep sbegin sdone) t f =
 >>> L.fold (groups' (chunksOf 2) L.list (\f -> transduce (surround "<" ">") (liftA2 (,) L.list f)) L.list) "aabbccdd"
 (["<aa>","<bb>","<cc>","<dd>"],"<aa><bb><cc><dd>")
 -}
-groups' :: Splitter i 
+groups' :: Transducer i i' s
         -> Fold u v -- ^ for aggregating the @u@ values produced for each group
-        -> Transduction' i a u 
+        -> Transduction' i' a u 
         -> Transduction' i a v -- ^ the resulting 'Fold' will return a summary @v@ of the stream
-groups' (Splitter sstep sbegin sdone) summarizer t f =
+groups' (Transducer sstep sbegin sdone) summarizer t f =
     Fold step (Trio sbegin summarizer (t (duplicated f))) done 
       where 
         step (Trio ss summarizer' fs) i = 
@@ -372,11 +372,13 @@ groups' (Splitter sstep sbegin sdone) summarizer t f =
            let (u,x) = fdone fstate
            in (u,t (duplicated x))
         done (Trio ss summarizer' (Fold fstep fstate fdone)) = 
-            let (u,extract -> x) = fdone (foldl' fstep fstate (sdone ss))
+            let 
+                (_,xss) = sdone ss
+                (u,extract -> x) = fdone (foldl' fstep fstate xss)
             in (L.fold summarizer' [u],x)
 
-groupsM :: Monad m => Splitter i -> TransductionM m i b -> TransductionM m i b
-groupsM (Splitter sstep sbegin sdone) t f = 
+groupsM :: Monad m => Transducer i i' s -> TransductionM m i' b -> TransductionM m i b
+groupsM (Transducer sstep sbegin sdone) t f = 
     FoldM step (return (Pair sbegin (t (duplicated f)))) done        
     where
         step (Pair ss fs) i = do
@@ -390,11 +392,12 @@ groupsM (Splitter sstep sbegin sdone) t f =
         reset (FoldM _ fstate fdone) = 
            liftM (t . duplicated) (fstate >>= fdone) 
         done (Pair ss (FoldM fstep fstate fdone)) = do
-            finalf <- fdone =<< flip (foldlM fstep) (sdone ss) =<< fstate
+            let (_,xss) = sdone ss
+            finalf <- fdone =<< flip (foldlM fstep) xss =<< fstate
             L.foldM finalf [] 
 
-groupsM' :: Monad m => Splitter i -> FoldM m u v -> TransductionM' m i a u -> TransductionM' m i a v 
-groupsM' (Splitter sstep sbegin sdone) summarizer t f =
+groupsM' :: Monad m => Transducer i i' s -> FoldM m u v -> TransductionM' m i' a u -> TransductionM' m i a v 
+groupsM' (Transducer sstep sbegin sdone) summarizer t f =
     FoldM step (return (Trio sbegin summarizer (t (duplicated f)))) done        
     where
         step (Trio ss summarizer' fs) i = do
@@ -417,7 +420,8 @@ groupsM' (Splitter sstep sbegin sdone) summarizer t f =
            return (u, t . duplicated $ x)
 
         done (Trio ss summarizer' (FoldM fstep fstate fdone)) = do
-            (u,finalf) <- fdone =<< flip (foldlM fstep) (sdone ss) =<< fstate
+            let (_,xss) = sdone ss
+            (u,finalf) <- fdone =<< flip (foldlM fstep) xss =<< fstate
             v <- L.foldM summarizer' [u]
             r <- L.foldM finalf []
             return (v,r)
@@ -426,10 +430,10 @@ groupsM' (Splitter sstep sbegin sdone) summarizer t f =
     'Transduction' that allows a 'Fold' to accept the original ungrouped input. 
 
 -}
-folds :: Splitter i -> Fold i b -> Transduction i b
+folds :: Transducer i i' r -> Fold i' b -> Transduction i b
 folds splitter f = groups splitter (transduce (chokepoint f))
 
-foldsM :: (Applicative m,Monad m) => Splitter i -> FoldM m i b -> TransductionM m i b
+foldsM :: (Applicative m,Monad m) => Transducer i i' r -> FoldM m i' b -> TransductionM m i b
 foldsM splitter f = groupsM splitter (transduceM (chokepointM f))
 
 ------------------------------------------------------------------------------
@@ -442,13 +446,13 @@ foldsM splitter f = groupsM splitter (transduceM (chokepointM f))
 >>> L.fold (groups (chunksOf 2) (transduce (surround [] [0])) L.list) [1..7]
 [1,2,0,3,4,0,5,6,0,7,0]
 -}
-chunksOf :: Int -> Splitter a
-chunksOf 0 = Splitter (\_ _ -> ((),[],repeat [])) () (error "never happens")
-chunksOf groupSize = Splitter step groupSize done 
+chunksOf :: Int -> Transducer a a ()
+chunksOf 0 = Transducer (\_ _ -> ((),[],repeat [])) () (error "never happens")
+chunksOf groupSize = Transducer step groupSize done 
     where
         step 0 a = (pred groupSize, [], [[a]])
         step i a = (pred i, [a], [])
-        done _ = []
+        done _ = ((),[])
 
 ------------------------------------------------------------------------------
 

@@ -59,7 +59,7 @@ decoder _step onLeftovers = L.Transducer step (Pair mempty _step) done
         let 
             T.Some txt leftovers next' = next i 
         in
-        (Pair leftovers next', [txt])
+        (Pair leftovers next',[txt],[])
     done (Pair leftovers _) = 
         if B.null leftovers
             then ((), [])
@@ -120,7 +120,7 @@ decoderE next = L.TransducerM step (return (Pair mempty next')) done
                 Left ue -> do
                     throwE ue
                 Right (T.Some txt leftovers next2) -> do
-                    return (Pair leftovers next2, [txt])
+                    return (Pair leftovers next2,[txt],[])
         done (Pair leftovers _) = do
             if B.null leftovers
                 then return ((), [])
@@ -165,11 +165,11 @@ blank = Data.Text.all isSpace
 stripStart :: L.Transducer T.Text T.Text ()
 stripStart = L.Transducer step False done
     where
-        step True i = (True, [i])
+        step True i = (True, [i],[])
         step False i =
             if blank i 
-                then (False, [])
-                else (True, [T.stripStart i])
+                then (False,[],[])
+                else (True, [T.stripStart i],[])
         done _  = ((),[])
 
 {-| Remove trailing white space from a stream of 'Text'.		
@@ -188,8 +188,8 @@ stripEnd = L.Transducer step [] done
         step txts i =
             if blank i
                 -- dangerous!
-                then (i:txts, [])
-                else ([i], reverse txts)
+                then (i:txts, [], [])
+                else ([i], reverse txts, [])
         done txts = case reverse txts of
             txt : _ -> ((), [T.stripEnd txt])
             _ -> ((), [])
@@ -202,8 +202,8 @@ stripEnd = L.Transducer step [] done
 >>> L.fold (L.groups lines (transduce newline) L.list) (map T.pack ["line 1\n line 2\n"])
 ["line 1","\n"," line 2","\n"]
 -}
-lines :: L.Splitter T.Text
-lines = L.Splitter step False done 
+lines :: L.Transducer T.Text T.Text ()
+lines = L.Transducer step False done 
     where
         step previousnl txt | Data.Text.null txt = (previousnl,[],[]) 
         step previousnl txt = do
@@ -214,5 +214,5 @@ lines = L.Splitter step False done
                 (_,[]) -> error "never happens"
                 (True,_) -> (lastc, [], map pure txts)
                 (False,t:ts) -> (lastc, [t], map pure ts)
-        done _ = []
+        done _ = ((),[])
 
