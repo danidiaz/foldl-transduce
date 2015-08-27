@@ -20,16 +20,6 @@ module Control.Foldl.Transduce (
     ,   transduce'
     ,   transduceM
     ,   transduceM'
-        -- * Transducers
-    ,   surround
-    ,   surroundIO
-        -- * Transducer utilities
-    ,   _generalize
-    ,   _simplify
-    ,   foldify
-    ,   foldifyM
-    ,   hoistTransducer
-    ,   hoistFold
         -- * Working with groups
     ,   groups
     ,   groups'
@@ -39,8 +29,18 @@ module Control.Foldl.Transduce (
     ,   folds'
     ,   foldsM
     ,   foldsM'
+        -- * Transducers
+    ,   surround
+    ,   surroundIO
         -- * Splitters
     ,   chunksOf
+        -- * Transducer utilities
+    ,   _generalize
+    ,   _simplify
+    ,   foldify
+    ,   foldifyM
+    ,   hoistTransducer
+    ,   hoistFold
         -- * Re-exports
         -- $reexports
     ,   module Data.Functor.Extend
@@ -104,23 +104,22 @@ type Transduction a b = forall x. Fold b x -> Fold a x
 -}
 type Transduction' a b r = forall x. Fold b x -> Fold a (r,x)
 
-{-| Representation of a stateful 'Transduction' with step function, an initial
-    accumulator, and a extraction function that returns a summary value of type
-    @r@. Both the step function and the extraction function may send output
-    downstream.
+{-| A stateful process that transforms a stream of inputs into a stream of
+    outputs, and may optionally demarcate groups in the stream of outputs.
 
-
-    A procedure for splitting a stream into delimited segments. It is
-    composed of a step function, an initial state, and a /done/ function that
-    may flush some accumulated output downstream.
+    Composed of a step function, an initial state, and a extraction function. 
 
     The step function returns a triplet of:
 
     * The new internal state.
-    * Output that continues the last segment detected in the previous step.
-    * A list of lists containing new segments detected in the current step. If
-      the list is empty, that means no splitting has taken place in the current
-      step.
+    * Outputs that continues the last segment detected in the previous step.
+    * A list of lists containing outputs for segments detected in the current
+    step. If the list is empty, that means no splitting has taken place in the
+    current step. 'Transducer's that do not perform grouping never return anything
+    other than @[]@ here. In effect, they treat the whole stream as a single group.
+
+    The extraction function returns the 'Transducer's own result value, as
+    well as any pending outputs.
 -}
 data Transducer i o r
      = forall x. Transducer (x -> i -> (x,[o],[[o]])) x (x -> (r,[o]))
@@ -133,8 +132,14 @@ instance Bifunctor (Transducer i) where
         Transducer (fmap (\(x,xs,xss) -> (x,map f xs, map (map f) xss)) . step) begin (fmap (fmap f) . done)
     second f w = fmap f w
 
+{-| Like 'Transduction', but works on monadic 'Fold's.		
+
+-}
 type TransductionM m a b = forall x. Monad m => FoldM m b x -> FoldM m a x
 
+{-| Like 'Transduction'', but works on monadic 'Fold's.		
+
+-}
 type TransductionM' m a b r = forall x. FoldM m b x -> FoldM m a (r,x)
 
 {-| Like 'Transducer', but monadic.
@@ -185,9 +190,15 @@ transduce' (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
                 (,) wr (fdone (foldl' fstep fs os))
 
 
+{-| Like 'transduce', but works on monadic 'Fold's.		
+
+-}
 transduceM :: Monad m => TransducerM m i o r -> TransductionM m i o 
 transduceM t = fmap snd . (transduceM' t)
 
+{-| Like 'transduce'', but works on monadic 'Fold's.		
+
+-}
 transduceM' :: Monad m => TransducerM m i o x -> TransductionM' m i o x
 transduceM' (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
     FoldM step (liftM2 Pair wstate fstate) done 
@@ -278,6 +289,9 @@ foldify :: Transducer i o r -> Fold i r
 foldify (Transducer step begin done) =
     Fold (\x i -> fstOf3 (step x i)) begin (\x -> fst (done x))
 
+{-| Monadic version of 'foldify'.		
+
+-}
 foldifyM :: Functor m => TransducerM m i o r -> FoldM m i r
 foldifyM (TransducerM step begin done) =
     FoldM (\x i -> fmap fstOf3 (step x i)) begin (\x -> fmap fst (done x))
@@ -315,8 +329,10 @@ hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g 
 
 ------------------------------------------------------------------------------
 
-{-| Applies a 'Transduction' to all groups detected by a 'Splitter', returning
-    a 'Transduction' that works over the undivided stream of inputs.		
+{-| Repeatedly applies a 'Transduction' to process each of the groups
+    demarcated by a 'Transducer', returning a 'Fold' what works over the
+    undivided stream of inputs. The return value of the 'Transducer' is
+    discarded.
 
 >>> L.fold (groups (chunksOf 2) (transduce (surround "<" ">")) L.list) "aabbccdd"
 "<aa><bb><cc><dd>"
@@ -328,20 +344,19 @@ groups splitter transduction oldfold =
     in 
     fmap snd newfold
 
-{-| Generalized version of 'groups' that obtains a summary value for each
-    group, aggregates them into a summary value for the whole stream, and puts
-    that information in the final result.		
+{-| Generalized version of 'groups' that preserves the return value of the
+    'Transducer'.
 
-    In practice, this function behaves like a combinaton of 'groups' and
-    'folds' that works in a single pass.
+    A summary value for each group is also calculated. They are aggregated for
+    the whole stream, with the help of an auxiliary 'Fold'.
 
 >>> L.fold (groups' (chunksOf 2) L.list (\f -> transduce (surround "<" ">") (liftA2 (,) L.list f)) L.list) "aabbccdd"
 (((),["<aa>","<bb>","<cc>","<dd>"]),"<aa><bb><cc><dd>")
 -}
 groups' :: Transducer i i' s
-        -> Fold u v -- ^ for aggregating the @u@ values produced for each group
-        -> Transduction' i' a u 
-        -> Transduction' i a (s,v) -- ^ the resulting 'Fold' will return a summary @v@ of the stream
+        -> Fold u v -- ^ auxiliary 'Fold' that aggregates the @u@ values produced for each group
+        -> Transduction' i' a u -- ^ repeatedly applied for processing each group
+        -> Transduction' i a (s,v) 
 groups' (Transducer sstep sbegin sdone) summarizer t f =
     Fold step (Trio sbegin summarizer (t (duplicated f))) done 
       where 
@@ -366,6 +381,9 @@ groups' (Transducer sstep sbegin sdone) summarizer t f =
                 (u,extract -> x) = fdone (foldl' fstep fstate xss)
             in ((s,L.fold summarizer' [u]),x)
 
+{-| Monadic version of 'groups'.		
+
+-}
 groupsM :: Monad m => TransducerM m i i' s -> TransductionM m i' b -> TransductionM m i b
 groupsM splitter transduction oldfold = 
     let transduction' = fmap ((,) ()) . transduction
@@ -374,6 +392,9 @@ groupsM splitter transduction oldfold =
     in 
     fmap snd newfold
 
+{-| Monadic version of 'groups''.		
+
+-}
 groupsM' :: Monad m => TransducerM m i i' s -> FoldM m u v -> TransductionM' m i' a u -> TransductionM' m i a (s,v) 
 groupsM' (TransducerM sstep sbegin sdone) summarizer t f =
     FoldM step (sbegin >>= \zzz -> return (Trio zzz summarizer (t (duplicated f)))) done        
@@ -403,24 +424,34 @@ groupsM' (TransducerM sstep sbegin sdone) summarizer t f =
             r <- L.foldM finalf []
             return ((s,v),r)
 
-{-| Summarizes each group detected by a 'Splitter' using a 'Fold', returning a
-    'Transduction' that allows a 'Fold' to accept the original ungrouped input. 
+{-| Summarizes each of the groups demarcated by the 'Transducer' using a
+    'Fold'. 
+    
+    The result value of the 'Transducer' is discarded.
 
 -}
 folds :: Transducer i i' r -> Fold i' b -> Transduction i b
 folds splitter f = groups splitter (transduce (chokepoint f))
 
+{-| Like 'folds', but preserves the return value of the 'Transducer'.
+
+-}
 folds' :: Transducer i i' s -> Fold i' b -> Transduction' i b s
 folds' splitter innerfold somefold = 
     fmap (bimap fst id) (groups' splitter L.mconcat innertrans somefold)
     where
     innertrans = fmap ((,) ()) . transduce (chokepoint innerfold)
 
+{-| Monadic version of 'folds'.		
 
+-}
 foldsM :: (Applicative m,Monad m) => TransducerM m i i' r -> FoldM m i' b -> TransductionM m i b
 foldsM splitter f = groupsM splitter (transduceM (chokepointM f))
 
 
+{-| Monadic version of 'folds''.		
+
+-}
 foldsM' :: (Applicative m,Monad m) => TransducerM m i i' s -> FoldM m i' b -> TransductionM' m i b s
 foldsM' splitter innerfold somefold = 
     fmap (bimap fst id) (groupsM' splitter (L.generalize L.mconcat) innertrans somefold)

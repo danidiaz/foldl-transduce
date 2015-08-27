@@ -20,8 +20,8 @@ testGroupIO = fmap show $
     withFile "/dev/null" AppendMode $ \h1 ->
         withFile "/dev/null" AppendMode $ \h2 ->
             flip L.foldM (repeat "aabbccddeeffgghhiijj") $
-                foldsM (chunksOf 7) (L.generalize L.list) (L.handlesM traverse (toHandle h1)) *>
-                foldsM (chunksOf 3) (L.generalize L.list) (L.handlesM traverse (toHandle h2))
+                foldsM (_generalize (chunksOf 7)) (L.generalize L.list) (L.handlesM traverse (toHandle h1)) *>
+                foldsM (_generalize (chunksOf 3)) (L.generalize L.list) (L.handlesM traverse (toHandle h2))
 
 testPureGroup :: IO String
 testPureGroup = evaluate . show $
