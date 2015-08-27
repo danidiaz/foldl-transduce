@@ -323,21 +323,11 @@ hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g 
 "<aa><bb><cc><dd>"
 -}
 groups :: Transducer i i' r -> Transduction i' b -> Transduction i b 
-groups (Transducer sstep sbegin sdone) t f =
-    Fold step (Pair sbegin (t (duplicated f))) done 
-    where
-        step (Pair ss fs) i = 
-           let 
-               (ss', oldSplit, newSplits) = sstep ss i
-               fs' = foldl' (step' . reset) (step' fs oldSplit) newSplits
-           in
-           Pair ss' fs'
-        step' = L.fold . duplicated
-        reset (Fold _ fstate fdone) = 
-           t (duplicated (fdone fstate)) 
-        done (Pair ss (Fold fstep fstate fdone)) = 
-            let (_,xss) = sdone ss in
-            extract (fdone (foldl' fstep fstate xss))
+groups splitter transduction oldfold = 
+    let transduction' = fmap ((,) ()) . transduction
+        newfold = groups' splitter L.mconcat transduction' oldfold 
+    in 
+    fmap snd newfold
 
 {-| Generalized version of 'groups' that obtains a summary value for each
     group, aggregates them into a summary value for the whole stream, and puts
@@ -380,8 +370,10 @@ groups' (Transducer sstep sbegin sdone) summarizer t f =
 groupsM :: Monad m => TransducerM m i i' s -> TransductionM m i' b -> TransductionM m i b
 groupsM splitter transduction oldfold = 
     let transduction' = fmap ((,) ()) . transduction
-        newfold = groupsM' splitter (L.generalize L.mconcat) transduction' oldfold 
-    in fmap snd newfold
+        newfold = 
+            groupsM' splitter (L.generalize L.mconcat) transduction' oldfold 
+    in 
+    fmap snd newfold
 
 groupsM' :: Monad m => TransducerM m i i' s -> FoldM m u v -> TransductionM' m i' a u -> TransductionM' m i a (s,v) 
 groupsM' (TransducerM sstep sbegin sdone) summarizer t f =
