@@ -24,12 +24,10 @@ module Control.Foldl.Transduce (
     ,   surround
     ,   surroundIO
         -- * Transducer utilities
-    ,   generalizeTransducer
-    ,   simplifyTransducer
+    ,   _generalize
+    ,   _simplify
     ,   foldify
     ,   foldifyM
-    ,   chokepoint 
-    ,   chokepointM
     ,   hoistTransducer
     ,   hoistFold
         -- * Working with groups
@@ -38,7 +36,9 @@ module Control.Foldl.Transduce (
     ,   groupsM
     ,   groupsM'
     ,   folds
+    ,   folds'
     ,   foldsM
+    ,   foldsM'
         -- * Splitters
     ,   chunksOf
         -- * Re-exports
@@ -58,7 +58,7 @@ import Control.Monad.IO.Class
 import Control.Comonad
 import Control.Foldl (Fold(..),FoldM(..))
 import qualified Control.Foldl as L
-import Control.Foldl.Transduce.Internal (Pair(..),Trio(..))
+import Control.Foldl.Transduce.Internal (Pair(..),Trio(..),fstOf3)
 
 {- $setup
 
@@ -159,7 +159,7 @@ instance (Functor m, Monad m) => Bifunctor (TransducerM m i) where
 {-| Apply a 'Transducer' to a 'Fold', discarding the return value of the
     'Transducer'.		
 
->>> L.fold (transduce (Transducer (\_ i -> ((),[i])) () (\_ -> ('r',[]))) L.list) [1..7]
+>>> L.fold (transduce (Transducer (\_ i -> ((),[i],[])) () (\_ -> ('r',[]))) L.list) [1..7]
 [1,2,3,4,5,6,7]
 -}
 transduce :: Transducer i o r -> Transduction i o 
@@ -168,7 +168,7 @@ transduce t = fmap snd . (transduce' t)
 {-| Generalized version of 'transduce' that preserves the return value of
     the 'Transducer'.
 
->>> L.fold (transduce' (Transducer (\_ i -> ((),[i])) () (\_ -> ('r',[]))) L.list) [1..7]
+>>> L.fold (transduce' (Transducer (\_ i -> ((),[i],[])) () (\_ -> ('r',[]))) L.list) [1..7]
 ('r',[1,2,3,4,5,6,7])
 -}
 transduce' :: Transducer i o x -> Transduction' i o x
@@ -178,7 +178,7 @@ transduce' (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
             step (Pair ws fs) i = 
                 let (ws',os,oss) = wstep ws i 
                 in
-                Pair ws' (foldl' fstep fs (os++mconcat oss))  
+                Pair ws' (foldl' fstep fs (os ++ mconcat oss))  
             done (Pair ws fs) = 
                 let (wr,os) = wdone ws
                 in 
@@ -194,7 +194,7 @@ transduceM' (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
         where
             step (Pair ws fs) i = do
                 (ws',os,oss) <- wstep ws i
-                fs' <- foldlM fstep fs (os++mconcat oss)
+                fs' <- foldlM fstep fs (os ++ mconcat oss)
                 return $! Pair ws' fs'
             done (Pair ws fs) = do
                 (wr,os) <- wdone ws
@@ -252,9 +252,9 @@ surroundIO prefixa suffixa =
 {-| Generalize a 'Transducer' to a 'TransducerM'.		
 
 -}
-generalizeTransducer :: Monad m => Transducer i o r -> TransducerM m i o r
-generalizeTransducer (Transducer step begin done) = TransducerM step' begin' done'
-  where
+_generalize :: Monad m => Transducer i o r -> TransducerM m i o r
+_generalize (Transducer step begin done) = TransducerM step' begin' done'
+    where
     step' x a = return (step x a)
     begin'    = return  begin
     done' x   = return (done x)
@@ -262,14 +262,13 @@ generalizeTransducer (Transducer step begin done) = TransducerM step' begin' don
 {-| Simplify a pure 'TransducerM' to a 'Transducer'.		
 
 -}
-simplifyTransducer :: TransducerM Identity i o r -> Transducer i o r
-simplifyTransducer (TransducerM step begin done) = Transducer step' begin' done' where
+_simplify :: TransducerM Identity i o r -> Transducer i o r
+_simplify (TransducerM step begin done) = Transducer step' begin' done' 
+    where
     step' x a = runIdentity (step x a)
     begin'    = runIdentity  begin
     done' x   = runIdentity (done x)
 
-fstOf3 :: (a,b,c) -> a
-fstOf3 (x,_,_) = x
 
 {-| Transforms a 'Transducer' into a 'Fold' by forgetting about the data sent
     downstream.		
@@ -337,7 +336,7 @@ groups splitter transduction oldfold =
     'folds' that works in a single pass.
 
 >>> L.fold (groups' (chunksOf 2) L.list (\f -> transduce (surround "<" ">") (liftA2 (,) L.list f)) L.list) "aabbccdd"
-(["<aa>","<bb>","<cc>","<dd>"],"<aa><bb><cc><dd>")
+(((),["<aa>","<bb>","<cc>","<dd>"]),"<aa><bb><cc><dd>")
 -}
 groups' :: Transducer i i' s
         -> Fold u v -- ^ for aggregating the @u@ values produced for each group
@@ -411,8 +410,22 @@ groupsM' (TransducerM sstep sbegin sdone) summarizer t f =
 folds :: Transducer i i' r -> Fold i' b -> Transduction i b
 folds splitter f = groups splitter (transduce (chokepoint f))
 
+folds' :: Transducer i i' s -> Fold i' b -> Transduction' i b s
+folds' splitter innerfold somefold = 
+    fmap (bimap fst id) (groups' splitter L.mconcat innertrans somefold)
+    where
+    innertrans = fmap ((,) ()) . transduce (chokepoint innerfold)
+
+
 foldsM :: (Applicative m,Monad m) => TransducerM m i i' r -> FoldM m i' b -> TransductionM m i b
 foldsM splitter f = groupsM splitter (transduceM (chokepointM f))
+
+
+foldsM' :: (Applicative m,Monad m) => TransducerM m i i' s -> FoldM m i' b -> TransductionM' m i b s
+foldsM' splitter innerfold somefold = 
+    fmap (bimap fst id) (groupsM' splitter (L.generalize L.mconcat) innertrans somefold)
+    where
+    innertrans = fmap ((,) ()) . transduceM (chokepointM innerfold)
 
 ------------------------------------------------------------------------------
 
