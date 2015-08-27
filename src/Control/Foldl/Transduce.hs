@@ -377,24 +377,11 @@ groups' (Transducer sstep sbegin sdone) summarizer t f =
                 (u,extract -> x) = fdone (foldl' fstep fstate xss)
             in ((s,L.fold summarizer' [u]),x)
 
-groupsM :: Monad m => Transducer i i' s -> TransductionM m i' b -> TransductionM m i b
-groupsM (Transducer sstep sbegin sdone) t f = 
-    FoldM step (return (Pair sbegin (t (duplicated f)))) done        
-    where
-        step (Pair ss fs) i = do
-             let 
-                 (ss', oldSplit, newSplits) = sstep ss i
-             fs' <- step' fs oldSplit
-             fs'' <- foldlM step'' fs' newSplits
-             return $! Pair ss' fs''
-        step' = L.foldM . duplicated
-        step'' = \fs is -> reset fs >>= \fs' -> step' fs' is
-        reset (FoldM _ fstate fdone) = 
-           liftM (t . duplicated) (fstate >>= fdone) 
-        done (Pair ss (FoldM fstep fstate fdone)) = do
-            let (_,xss) = sdone ss
-            finalf <- fdone =<< flip (foldlM fstep) xss =<< fstate
-            L.foldM finalf [] 
+groupsM :: Monad m => TransducerM m i i' s -> TransductionM m i' b -> TransductionM m i b
+groupsM splitter transduction oldfold = 
+    let transduction' = fmap ((,) ()) . transduction
+        newfold = groupsM' splitter (L.generalize L.mconcat) transduction' oldfold 
+    in fmap snd newfold
 
 groupsM' :: Monad m => TransducerM m i i' s -> FoldM m u v -> TransductionM' m i' a u -> TransductionM' m i a (s,v) 
 groupsM' (TransducerM sstep sbegin sdone) summarizer t f =
@@ -432,7 +419,7 @@ groupsM' (TransducerM sstep sbegin sdone) summarizer t f =
 folds :: Transducer i i' r -> Fold i' b -> Transduction i b
 folds splitter f = groups splitter (transduce (chokepoint f))
 
-foldsM :: (Applicative m,Monad m) => Transducer i i' r -> FoldM m i' b -> TransductionM m i b
+foldsM :: (Applicative m,Monad m) => TransducerM m i i' r -> FoldM m i' b -> TransductionM m i b
 foldsM splitter f = groupsM splitter (transduceM (chokepointM f))
 
 ------------------------------------------------------------------------------
