@@ -352,7 +352,7 @@ groups (Transducer sstep sbegin sdone) t f =
 groups' :: Transducer i i' s
         -> Fold u v -- ^ for aggregating the @u@ values produced for each group
         -> Transduction' i' a u 
-        -> Transduction' i a v -- ^ the resulting 'Fold' will return a summary @v@ of the stream
+        -> Transduction' i a (s,v) -- ^ the resulting 'Fold' will return a summary @v@ of the stream
 groups' (Transducer sstep sbegin sdone) summarizer t f =
     Fold step (Trio sbegin summarizer (t (duplicated f))) done 
       where 
@@ -373,9 +373,9 @@ groups' (Transducer sstep sbegin sdone) summarizer t f =
            in (u,t (duplicated x))
         done (Trio ss summarizer' (Fold fstep fstate fdone)) = 
             let 
-                (_,xss) = sdone ss
+                (s,xss) = sdone ss
                 (u,extract -> x) = fdone (foldl' fstep fstate xss)
-            in (L.fold summarizer' [u],x)
+            in ((s,L.fold summarizer' [u]),x)
 
 groupsM :: Monad m => Transducer i i' s -> TransductionM m i' b -> TransductionM m i b
 groupsM (Transducer sstep sbegin sdone) t f = 
@@ -396,13 +396,12 @@ groupsM (Transducer sstep sbegin sdone) t f =
             finalf <- fdone =<< flip (foldlM fstep) xss =<< fstate
             L.foldM finalf [] 
 
-groupsM' :: Monad m => Transducer i i' s -> FoldM m u v -> TransductionM' m i' a u -> TransductionM' m i a v 
-groupsM' (Transducer sstep sbegin sdone) summarizer t f =
-    FoldM step (return (Trio sbegin summarizer (t (duplicated f)))) done        
+groupsM' :: Monad m => TransducerM m i i' s -> FoldM m u v -> TransductionM' m i' a u -> TransductionM' m i a (s,v) 
+groupsM' (TransducerM sstep sbegin sdone) summarizer t f =
+    FoldM step (sbegin >>= \zzz -> return (Trio zzz summarizer (t (duplicated f)))) done        
     where
         step (Trio ss summarizer' fs) i = do
-            let 
-                (ss', oldSplit, newSplits) = sstep ss i
+            (ss', oldSplit, newSplits) <- sstep ss i 
             fs' <- step' fs oldSplit
             (summarizer'',fs'') <- foldlM step'' (summarizer',fs') newSplits
             return $! Trio ss' summarizer'' fs''
@@ -420,11 +419,11 @@ groupsM' (Transducer sstep sbegin sdone) summarizer t f =
            return (u, t . duplicated $ x)
 
         done (Trio ss summarizer' (FoldM fstep fstate fdone)) = do
-            let (_,xss) = sdone ss
+            (s,xss) <- sdone ss
             (u,finalf) <- fdone =<< flip (foldlM fstep) xss =<< fstate
             v <- L.foldM summarizer' [u]
             r <- L.foldM finalf []
-            return (v,r)
+            return ((s,v),r)
 
 {-| Summarizes each group detected by a 'Splitter' using a 'Fold', returning a
     'Transduction' that allows a 'Fold' to accept the original ungrouped input. 
