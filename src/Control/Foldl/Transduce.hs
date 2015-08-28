@@ -58,7 +58,7 @@ import Control.Monad.IO.Class
 import Control.Comonad
 import Control.Foldl (Fold(..),FoldM(..))
 import qualified Control.Foldl as L
-import Control.Foldl.Transduce.Internal (Pair(..),Trio(..),fstOf3)
+import Control.Foldl.Transduce.Internal (Pair(..),Trio(..),_1of3)
 
 {- $setup
 
@@ -263,7 +263,7 @@ surroundIO prefixa suffixa =
 {-| Generalize a 'Transducer' to a 'TransducerM'.		
 
 -}
-_generalize :: Monad m => Transducer i o r -> TransducerM m i o r
+_generalize :: Monad m => Transducer i o s -> TransducerM m i o s
 _generalize (Transducer step begin done) = TransducerM step' begin' done'
     where
     step' x a = return (step x a)
@@ -273,7 +273,7 @@ _generalize (Transducer step begin done) = TransducerM step' begin' done'
 {-| Simplify a pure 'TransducerM' to a 'Transducer'.		
 
 -}
-_simplify :: TransducerM Identity i o r -> Transducer i o r
+_simplify :: TransducerM Identity i o s -> Transducer i o s
 _simplify (TransducerM step begin done) = Transducer step' begin' done' 
     where
     step' x a = runIdentity (step x a)
@@ -285,29 +285,29 @@ _simplify (TransducerM step begin done) = Transducer step' begin' done'
     downstream.		
 
 -}
-foldify :: Transducer i o r -> Fold i r
+foldify :: Transducer i o s -> Fold i s
 foldify (Transducer step begin done) =
-    Fold (\x i -> fstOf3 (step x i)) begin (\x -> fst (done x))
+    Fold (\x i -> _1of3 (step x i)) begin (\x -> fst (done x))
 
 {-| Monadic version of 'foldify'.		
 
 -}
-foldifyM :: Functor m => TransducerM m i o r -> FoldM m i r
+foldifyM :: Functor m => TransducerM m i o s -> FoldM m i s
 foldifyM (TransducerM step begin done) =
-    FoldM (\x i -> fmap fstOf3 (step x i)) begin (\x -> fmap fst (done x))
+    FoldM (\x i -> fmap _1of3 (step x i)) begin (\x -> fmap fst (done x))
 
 {-| Transforms a 'Fold' into a 'Transducer' that sends the return value of the
     'Fold' downstream when upstream closes.		
 
 -}
-chokepoint :: Fold i b -> Transducer i b ()
+chokepoint :: Fold a r -> Transducer a r ()
 chokepoint (Fold fstep fstate fdone) =
     (Transducer wstep fstate wdone)
     where
         wstep = \fstate' i -> (fstep fstate' i,[],[])
         wdone = \fstate' -> ((),[fdone fstate'])
 
-chokepointM :: Applicative m => FoldM m i b -> TransducerM m i b ()
+chokepointM :: Applicative m => FoldM m a r -> TransducerM m a r ()
 chokepointM (FoldM fstep fstate fdone) = 
     (TransducerM wstep fstate wdone)
     where
@@ -338,7 +338,7 @@ hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g 
 >>> L.fold (groups (chunksOf 2) (transduce (surround "<" ">")) L.list) "aabbccdd"
 "<aa><bb><cc><dd>"
 -}
-groups :: Transducer a b r -> Transduction b c -> Transduction a c 
+groups :: Transducer a b s -> Transduction b c -> Transduction a c 
 groups splitter transduction oldfold = 
     let transduction' = fmap ((,) ()) . transduction
         newfold = groups' splitter L.mconcat transduction' oldfold 
@@ -433,7 +433,7 @@ groupsM' (TransducerM sstep sbegin sdone) summarizer t f =
 >>> L.fold (folds (chunksOf 3) L.sum L.list) [1..7]
 [6,15,7]
 -}
-folds :: Transducer a b r -> Fold b c -> Transduction a c
+folds :: Transducer a b s -> Fold b c -> Transduction a c
 folds splitter f = groups splitter (transduce (chokepoint f))
 
 {-| Like 'folds', but preserves the return value of the 'Transducer'.
@@ -450,14 +450,14 @@ folds' splitter innerfold somefold =
 {-| Monadic version of 'folds'.		
 
 -}
-foldsM :: (Applicative m,Monad m) => TransducerM m i i' r -> FoldM m i' b -> TransductionM m i b
+foldsM :: (Applicative m,Monad m) => TransducerM m a b s -> FoldM m b c -> TransductionM m a c
 foldsM splitter f = groupsM splitter (transduceM (chokepointM f))
 
 
 {-| Monadic version of 'folds''.		
 
 -}
-foldsM' :: (Applicative m,Monad m) => TransducerM m i i' s -> FoldM m i' b -> TransductionM' m i b s
+foldsM' :: (Applicative m,Monad m) => TransducerM m a b s -> FoldM m b c -> TransductionM' m a c s
 foldsM' splitter innerfold somefold = 
     fmap (bimap fst id) (groupsM' splitter (L.generalize L.mconcat) innertrans somefold)
     where
