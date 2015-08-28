@@ -112,11 +112,11 @@ type Transduction' a b r = forall x. Fold b x -> Fold a (r,x)
     The step function returns a triplet of:
 
     * The new internal state.
-    * Outputs that continues the last segment detected in the previous step.
+    * Outputs that continue the last segment detected in the previous step.
     * A list of lists containing outputs for segments detected in the current
-    step. If the list is empty, that means no splitting has taken place in the
-    current step. 'Transducer's that do not perform grouping never return anything
-    other than @[]@ here. In effect, they treat the whole stream as a single group.
+      step. If the list is empty, that means no splitting has taken place in the
+      current step. 'Transducer's that do not perform grouping never return anything
+      other than @[]@ here. In effect, they treat the whole stream as a single group.
 
     The extraction function returns the 'Transducer's own result value, as
     well as any pending outputs.
@@ -331,8 +331,9 @@ hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g 
 
 {-| Repeatedly applies a 'Transduction' to process each of the groups
     demarcated by a 'Transducer', returning a 'Fold' what works over the
-    undivided stream of inputs. The return value of the 'Transducer' is
-    discarded.
+    undivided stream of inputs. 
+    
+    The return value of the 'Transducer' is discarded.
 
 >>> L.fold (groups (chunksOf 2) (transduce (surround "<" ">")) L.list) "aabbccdd"
 "<aa><bb><cc><dd>"
@@ -429,12 +430,16 @@ groupsM' (TransducerM sstep sbegin sdone) summarizer t f =
     
     The result value of the 'Transducer' is discarded.
 
+>>> L.fold (folds (chunksOf 3) L.sum L.list) [1..7]
+[6,15,7]
 -}
 folds :: Transducer i i' r -> Fold i' b -> Transduction i b
 folds splitter f = groups splitter (transduce (chokepoint f))
 
 {-| Like 'folds', but preserves the return value of the 'Transducer'.
 
+>>> L.fold (folds (chunksOf 3) L.sum L.list) [1..7]
+((),[6,15,7])
 -}
 folds' :: Transducer i i' s -> Fold i' b -> Transduction' i b s
 folds' splitter innerfold somefold = 
