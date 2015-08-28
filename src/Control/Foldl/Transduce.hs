@@ -338,7 +338,7 @@ hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g 
 >>> L.fold (groups (chunksOf 2) (transduce (surround "<" ">")) L.list) "aabbccdd"
 "<aa><bb><cc><dd>"
 -}
-groups :: Transducer i i' r -> Transduction i' b -> Transduction i b 
+groups :: Transducer a b r -> Transduction b c -> Transduction a c 
 groups splitter transduction oldfold = 
     let transduction' = fmap ((,) ()) . transduction
         newfold = groups' splitter L.mconcat transduction' oldfold 
@@ -354,10 +354,10 @@ groups splitter transduction oldfold =
 >>> L.fold (groups' (chunksOf 2) L.list (\f -> transduce (surround "<" ">") (liftA2 (,) L.list f)) L.list) "aabbccdd"
 (((),["<aa>","<bb>","<cc>","<dd>"]),"<aa><bb><cc><dd>")
 -}
-groups' :: Transducer i i' s
+groups' :: Transducer a b s
         -> Fold u v -- ^ auxiliary 'Fold' that aggregates the @u@ values produced for each group
-        -> Transduction' i' a u -- ^ repeatedly applied for processing each group
-        -> Transduction' i a (s,v) 
+        -> Transduction' b c u -- ^ repeatedly applied for processing each group
+        -> Transduction' a c (s,v) 
 groups' (Transducer sstep sbegin sdone) summarizer t f =
     Fold step (Trio sbegin summarizer (t (duplicated f))) done 
       where 
