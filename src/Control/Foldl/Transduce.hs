@@ -361,18 +361,18 @@ groups' :: Transducer a b s
 groups' (Transducer sstep sbegin sdone) somesummarizer t somefold =
     Fold step (Trio sbegin somesummarizer (t (duplicated somefold))) done 
       where 
-        step (Trio sstate summarizer fstate) i = 
+        step (Trio sstate summarizer innerfold) i = 
            let 
                (sstate', oldSplit, newSplits) = sstep sstate i
-               (summarizer',fstate') = 
+               (summarizer',innerfold') = 
                    foldl' 
-                   (\(summarizer_,fstate_) somesplit -> 
-                       let (u, resetted) = reset fstate_
+                   (\(summarizer_,innerfold_) somesplit -> 
+                       let (u,resetted) = reset innerfold_
                        in  (L.fold (duplicated summarizer_) [u], feed resetted somesplit))
-                   (summarizer, feed fstate oldSplit) 
+                   (summarizer, feed innerfold oldSplit) 
                    newSplits
            in
-           Trio sstate' summarizer' fstate'
+           Trio sstate' summarizer' innerfold'
         feed = L.fold . duplicated
         reset (Fold _ fstate fdone) = fmap (t . duplicated) (fdone fstate) 
         done (Trio sstate summarizer (Fold fstep fstate fdone)) = 
@@ -396,32 +396,32 @@ groupsM splitter transduction oldfold =
 
 -}
 groupsM' :: Monad m => TransducerM m a b s -> FoldM m u v -> TransductionM' m b c u -> TransductionM' m a c (s,v) 
-groupsM' (TransducerM sstep sbegin sdone) summarizer t f =
-    FoldM step (sbegin >>= \zzz -> return (Trio zzz summarizer (t (duplicated f)))) done        
+groupsM' (TransducerM sstep sbegin sdone) somesummarizer t somefold =
+    FoldM step (sbegin >>= \x -> return (Trio x somesummarizer (t (duplicated somefold)))) done        
     where
-        step (Trio ss summarizer' fs) i = do
-            (ss', oldSplit, newSplits) <- sstep ss i 
-            fs' <- step' fs oldSplit
-            (summarizer'',fs'') <- foldlM step'' (summarizer',fs') newSplits
-            return $! Trio ss' summarizer'' fs''
+        step (Trio sstate summarizer innerfold) i = do
+            (sstate', oldSplit, newSplits) <- sstep sstate i 
+            innerfold' <- feed innerfold oldSplit
+            (summarizer',innerfold'') <- foldlM step' (summarizer,innerfold') newSplits
+            return $! Trio sstate' summarizer' innerfold''
 
-        step' = L.foldM . duplicated
+        step' = \(summarizer, innerfold) is -> do
+            (u,innerfold') <- reset innerfold 
+            summarizer' <- L.foldM (duplicated summarizer) [u]
+            innerfold'' <- feed innerfold' is
+            return $! (summarizer',innerfold'') 
 
-        step'' = \(summarizer_, fs) is -> do
-            (u,fs') <- reset fs 
-            u' <- L.foldM (duplicated summarizer_) [u]
-            fs'' <- step' fs' is
-            return $! (u',fs'') 
+        feed = L.foldM . duplicated
 
         reset (FoldM _ fstate fdone) = do
            (u,x) <- fdone =<< fstate 
-           return (u, t . duplicated $ x)
+           return (u, t (duplicated x))
 
-        done (Trio ss summarizer' (FoldM fstep fstate fdone)) = do
-            (s,xss) <- sdone ss
-            (u,finalf) <- fdone =<< flip (foldlM fstep) xss =<< fstate
-            v <- L.foldM summarizer' [u]
-            r <- L.foldM finalf []
+        done (Trio sstate summarizer (FoldM fstep fstate fdone)) = do
+            (s,bss) <- sdone sstate
+            (u,finalfold) <- fdone =<< flip (foldlM fstep) bss =<< fstate
+            v <- L.foldM summarizer [u]
+            r <- L.foldM finalfold []
             return ((s,v),r)
 
 {-| Summarizes each of the groups demarcated by the 'Transducer' using a
@@ -437,7 +437,7 @@ folds splitter f = groups splitter (transduce (chokepoint f))
 
 {-| Like 'folds', but preserves the return value of the 'Transducer'.
 
->>> L.fold (folds (chunksOf 3) L.sum L.list) [1..7]
+>>> L.fold (folds' (chunksOf 3) L.sum L.list) [1..7]
 ((),[6,15,7])
 -}
 folds' :: Transducer a b s -> Fold b c -> Transduction' a c s
