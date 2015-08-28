@@ -18,9 +18,10 @@ module Control.Foldl.Transduce.Text (
     ,   stripEnd
         -- * Splitters
     ,   lines
+    ,   words
     ) where
 
-import Prelude hiding (lines)
+import Prelude hiding (lines,words)
 import Data.Char
 import Data.Monoid (mempty)
 import Data.Foldable (foldMap)
@@ -194,25 +195,60 @@ stripEnd = L.Transducer step [] done
             txt : _ -> ((), [T.stripEnd txt])
             _ -> ((), [])
 
-{-| Splits a stream into lines, removing the newlines.
+{-| Splits a stream of text into lines, removing the newlines.
 
->>> L.fold (L.groups lines id L.list) (map T.pack ["line 1\n line 2\n"])
-["line 1"," line 2"]
+>>> L.fold (L.groups lines (transduce (surround [T.pack "x"] [])) L.list) (map T.pack ["line 1\n line 2\n"])
+["x","line 1","x"," line 2"]
 
 >>> L.fold (L.groups lines (transduce newline) L.list) (map T.pack ["line 1\n line 2\n"])
 ["line 1","\n"," line 2","\n"]
+
+    Used with 'L.transduce', it simply removes newlines:
+
+>>> L.fold (L.transduce lines L.list) (map T.pack ["line 1\n line 2\n"])
+["line 1"," line 2"]
 -}
 lines :: L.Transducer T.Text T.Text ()
 lines = L.Transducer step False done 
     where
-        step previousnl txt | Data.Text.null txt = (previousnl,[],[]) 
-        step previousnl txt = do
-            let
-                lastc = Data.Text.last txt == '\n'
-                txts = T.lines txt
-            case (previousnl,txts) of
-                (_,[]) -> error "never happens"
-                (True,_) -> (lastc, [], map pure txts)
-                (False,t:ts) -> (lastc, [t], map pure ts)
+        step previousnl txt =
+            if Data.Text.null txt
+               then  
+                   (previousnl,[],[])
+               else
+                   let
+                       lastc = Data.Text.last txt == '\n'
+                       txts = T.lines txt
+                   in
+                   case (previousnl,txts) of
+                       (_,[]) -> error "never happens"
+                       (True,_) -> (lastc, [], map pure txts)
+                       (False,t:ts) -> (lastc, [t], map pure ts)
+
         done _ = ((),[])
 
+
+data WordsState = 
+      NoPreviousChar
+    | PreviousCharSpace
+    | PreviousCharNotSpace
+
+{-| Splits a stream of text into words, removing whitespace.
+
+-}
+words :: L.Transducer T.Text T.Text ()
+words = L.Transducer step NoPreviousChar done 
+    where
+        step tstate txt | Data.Text.null txt = (tstate,[],[])
+        step tstate txt | blank txt = 
+            case tstate of
+                NoPreviousChar -> undefined
+                PreviousCharSpace -> undefined
+                PreviousCharNotSpace -> undefined
+        step tstate txt =  
+            let firstcblank = undefined
+                lastcblank = undefined
+            in
+            undefined
+
+        done _ = ((),[])

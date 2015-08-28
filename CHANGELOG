@@ -1,4 +1,10 @@
+# 0.2.1.0
+
+- Comonad and Extend instances for Transducer 
+- words splitter
+
 # 0.2.0.0
+
 - Removed the Spliiter type. Now it's transducers for everything!
 - generalizeTransducer -> _generalize
 - simplifyTransducer -> _simplify
@@ -6,6 +12,7 @@
 
 
 # 0.1.2.0
+
 - Added explicit bifunctors dependency.
 - Added Transduce', TransduceM' type synonyms.
 - Added groups', groupsM'.

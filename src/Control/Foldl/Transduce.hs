@@ -124,6 +124,17 @@ type Transduction' a b r = forall x. Fold b x -> Fold a (r,x)
 data Transducer i o r
      = forall x. Transducer (x -> i -> (x,[o],[[o]])) x (x -> (r,[o]))
 
+instance Comonad (Transducer i o) where
+    extract (Transducer _ begin done) = fst (done begin)
+    {-# INLINABLE extract #-}
+
+    duplicate (Transducer step begin done) = Transducer step begin (\x -> (Transducer step x done,[]))
+    {-# INLINABLE duplicate #-}
+
+instance Extend (Transducer i o) where
+    duplicated f = duplicate f
+    {-# INLINABLE duplicated #-}
+
 instance Functor (Transducer i o) where
     fmap f (Transducer step begin done) = Transducer step begin (first f . done)
 
@@ -160,6 +171,11 @@ instance (Functor m, Monad m) => Bifunctor (TransducerM m i) where
     first f (TransducerM step begin done) =
         TransducerM (fmap (fmap (\(x,xs,xss) -> (x,map f xs, map (map f) xss))) . step) begin (fmap (fmap (fmap f)) . done)
     second f w = fmap f w
+
+instance Monad m => Extend (TransducerM m i o) where
+    duplicated (TransducerM step begin done) = 
+        TransducerM step begin (\x -> return $! (TransducerM step (return x) done,[]))
+    {-# INLINABLE duplicated #-}
 
 {-| Apply a 'Transducer' to a 'Fold', discarding the return value of the
     'Transducer'.		
