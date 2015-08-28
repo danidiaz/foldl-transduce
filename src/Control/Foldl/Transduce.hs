@@ -167,7 +167,7 @@ instance (Functor m, Monad m) => Bifunctor (TransducerM m i) where
 >>> L.fold (transduce (Transducer (\_ i -> ((),[i],[])) () (\_ -> ('r',[]))) L.list) [1..7]
 [1,2,3,4,5,6,7]
 -}
-transduce :: Transducer i o r -> Transduction i o 
+transduce :: Transducer i o s -> Transduction i o 
 transduce t = fmap snd . (transduce' t)
 
 {-| Generalized version of 'transduce' that preserves the return value of
@@ -176,7 +176,7 @@ transduce t = fmap snd . (transduce' t)
 >>> L.fold (transduce' (Transducer (\_ i -> ((),[i],[])) () (\_ -> ('r',[]))) L.list) [1..7]
 ('r',[1,2,3,4,5,6,7])
 -}
-transduce' :: Transducer i o x -> Transduction' i o x
+transduce' :: Transducer i o s -> Transduction' i o s
 transduce' (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
     Fold step (Pair wstate fstate) done 
         where
@@ -193,13 +193,13 @@ transduce' (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
 {-| Like 'transduce', but works on monadic 'Fold's.		
 
 -}
-transduceM :: Monad m => TransducerM m i o r -> TransductionM m i o 
+transduceM :: Monad m => TransducerM m i o s -> TransductionM m i o 
 transduceM t = fmap snd . (transduceM' t)
 
 {-| Like 'transduce'', but works on monadic 'Fold's.		
 
 -}
-transduceM' :: Monad m => TransducerM m i o x -> TransductionM' m i o x
+transduceM' :: Monad m => TransducerM m i o s -> TransductionM' m i o s
 transduceM' (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
     FoldM step (liftM2 Pair wstate fstate) done 
         where
@@ -318,7 +318,7 @@ chokepointM (FoldM fstep fstate fdone) =
 {-| Changes the base monad used by a 'TransducerM'.		
 
 -}
-hoistTransducer :: Monad m => (forall a. m a -> n a) -> TransducerM m i o r -> TransducerM n i o r 
+hoistTransducer :: Monad m => (forall a. m a -> n a) -> TransducerM m i o s -> TransducerM n i o s 
 hoistTransducer g (TransducerM step begin done) = TransducerM (\s i -> g (step s i)) (g begin) (g . done)
 
 {-| Changes the base monad used by a 'FoldM'.		
