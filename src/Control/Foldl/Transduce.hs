@@ -385,7 +385,7 @@ groups' (Transducer sstep sbegin sdone) summarizer t f =
 {-| Monadic version of 'groups'.		
 
 -}
-groupsM :: Monad m => TransducerM m i i' s -> TransductionM m i' b -> TransductionM m i b
+groupsM :: Monad m => TransducerM m a b s -> TransductionM m b c -> TransductionM m a c
 groupsM splitter transduction oldfold = 
     let transduction' = fmap ((,) ()) . transduction
         newfold = 
@@ -396,7 +396,7 @@ groupsM splitter transduction oldfold =
 {-| Monadic version of 'groups''.		
 
 -}
-groupsM' :: Monad m => TransducerM m i i' s -> FoldM m u v -> TransductionM' m i' a u -> TransductionM' m i a (s,v) 
+groupsM' :: Monad m => TransducerM m a b s -> FoldM m u v -> TransductionM' m b c u -> TransductionM' m a c (s,v) 
 groupsM' (TransducerM sstep sbegin sdone) summarizer t f =
     FoldM step (sbegin >>= \zzz -> return (Trio zzz summarizer (t (duplicated f)))) done        
     where
@@ -433,7 +433,7 @@ groupsM' (TransducerM sstep sbegin sdone) summarizer t f =
 >>> L.fold (folds (chunksOf 3) L.sum L.list) [1..7]
 [6,15,7]
 -}
-folds :: Transducer i i' r -> Fold i' b -> Transduction i b
+folds :: Transducer a b r -> Fold b c -> Transduction a c
 folds splitter f = groups splitter (transduce (chokepoint f))
 
 {-| Like 'folds', but preserves the return value of the 'Transducer'.
@@ -441,7 +441,7 @@ folds splitter f = groups splitter (transduce (chokepoint f))
 >>> L.fold (folds (chunksOf 3) L.sum L.list) [1..7]
 ((),[6,15,7])
 -}
-folds' :: Transducer i i' s -> Fold i' b -> Transduction' i b s
+folds' :: Transducer a b s -> Fold b c -> Transduction' a c s
 folds' splitter innerfold somefold = 
     fmap (bimap fst id) (groups' splitter L.mconcat innertrans somefold)
     where
