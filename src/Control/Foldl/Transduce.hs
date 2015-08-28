@@ -358,29 +358,28 @@ groups' :: Transducer a b s
         -> Fold u v -- ^ auxiliary 'Fold' that aggregates the @u@ values produced for each group
         -> Transduction' b c u -- ^ repeatedly applied for processing each group
         -> Transduction' a c (s,v) 
-groups' (Transducer sstep sbegin sdone) summarizer t f =
-    Fold step (Trio sbegin summarizer (t (duplicated f))) done 
+groups' (Transducer sstep sbegin sdone) somesummarizer t somefold =
+    Fold step (Trio sbegin somesummarizer (t (duplicated somefold))) done 
       where 
-        step (Trio ss summarizer' fs) i = 
+        step (Trio sstate summarizer fstate) i = 
            let 
-               (ss', oldSplit, newSplits) = sstep ss i
-               (summarizer'',fs') = foldl' 
-                   (\(summarizer_,fs_) split_ -> 
-                       let (u, renewed) = reset fs_
-                       in (L.fold (duplicated summarizer_) [u], step' renewed split_))
-                   (summarizer', step' fs oldSplit) 
+               (sstate', oldSplit, newSplits) = sstep sstate i
+               (summarizer',fstate') = 
+                   foldl' 
+                   (\(summarizer_,fstate_) somesplit -> 
+                       let (u, resetted) = reset fstate_
+                       in  (L.fold (duplicated summarizer_) [u], feed resetted somesplit))
+                   (summarizer, feed fstate oldSplit) 
                    newSplits
            in
-           Trio ss' summarizer'' fs'
-        step' = L.fold . duplicated
-        reset (Fold _ fstate fdone) = 
-           let (u,x) = fdone fstate
-           in (u,t (duplicated x))
-        done (Trio ss summarizer' (Fold fstep fstate fdone)) = 
+           Trio sstate' summarizer' fstate'
+        feed = L.fold . duplicated
+        reset (Fold _ fstate fdone) = fmap (t . duplicated) (fdone fstate) 
+        done (Trio sstate summarizer (Fold fstep fstate fdone)) = 
             let 
-                (s,xss) = sdone ss
-                (u,extract -> x) = fdone (foldl' fstep fstate xss)
-            in ((s,L.fold summarizer' [u]),x)
+                (s,bss) = sdone sstate
+                (u,extract -> x) = fdone (foldl' fstep fstate bss)
+            in  ((s,L.fold summarizer [u]),x)
 
 {-| Monadic version of 'groups'.		
 
