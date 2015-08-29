@@ -39,7 +39,7 @@ import Control.Foldl.Transduce.Internal (Pair(..))
 
 {- $setup
 
->>> import Data.String hiding (lines)
+>>> import Data.String hiding (lines,words)
 >>> import Data.Text (Text)
 >>> import Control.Applicative
 >>> import Control.Monad.Trans.Except
@@ -235,6 +235,13 @@ data WordsState =
 
 {-| Splits a stream of text into words, removing whitespace.
 
+>>> L.fold (folds words L.list L.list) (map T.pack ["  a","aa ", "bb c","cc dd ","ee f","f"])
+[["a","aa"],["bb"],["c","cc"],["dd"],["ee"],["f","f"]]
+
+    Used with 'L.transduce', it simply removes all spaces:
+
+>>> L.fold (L.transduce words L.list) (map T.pack ["  a","aa ", "bb c","cc dd ","ee f","f"])
+["a","aa","bb","c","cc","dd","ee","f","f"]
 -}
 words :: L.Transducer T.Text T.Text ()
 words = L.Transducer step NoLastChar done 
@@ -251,8 +258,10 @@ words = L.Transducer step NoLastChar done
                            then LastCharSpace 
                            else LastCharNotSpace
                     (oldgroup,newgroups) = case (tstate, T.words txt) of
-                        (NoLastChar,w:ws) -> ([w],map pure ws)
-                        (LastCharSpace,ws) -> ([],map pure ws)
+                        (NoLastChar,w:ws) -> 
+                            ([w],map pure ws)
+                        (LastCharSpace,ws) -> 
+                            ([],map pure ws)
                         (LastCharNotSpace,w:ws) -> 
                             if isSpace (T.head txt)
                                then ([],map pure (w:ws))
