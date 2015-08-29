@@ -238,7 +238,7 @@ data WordsState =
 >>> L.fold (folds words L.list L.list) (map T.pack ["  a","aa ", "bb c","cc dd ","ee f","f"])
 [["a","aa"],["bb"],["c","cc"],["dd"],["ee"],["f","f"]]
 
-    Used with 'L.transduce', it simply removes all whitespaces:
+    Used with 'L.transduce', it simply removes all whitespace:
 
 >>> L.fold (L.transduce words L.list) (map T.pack ["  a","aa ", "bb c","cc dd ","ee f","f"])
 ["a","aa","bb","c","cc","dd","ee","f","f"]

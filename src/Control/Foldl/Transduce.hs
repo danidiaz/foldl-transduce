@@ -30,6 +30,9 @@ module Control.Foldl.Transduce (
     ,   foldsM
     ,   foldsM'
         -- * Transducers
+    ,   take
+    ,   takeWhile
+    ,   drop
     ,   surround
     ,   surroundIO
         -- * Splitters
@@ -46,6 +49,8 @@ module Control.Foldl.Transduce (
     ,   module Data.Functor.Extend
     ,   module Control.Foldl
     ) where
+
+import Prelude hiding (take,drop,takeWhile,dropWhile)
 
 import Data.Bifunctor
 import Data.Monoid
@@ -65,6 +70,7 @@ import Control.Foldl.Transduce.Internal (Pair(..),Trio(..),_1of3)
 >>> import qualified Control.Foldl as L
 >>> import Control.Foldl.Transduce
 >>> import Control.Applicative
+>>> import Prelude hiding (take,drop,takeWhile,dropWhile)
 
 -}
 
@@ -230,6 +236,62 @@ transduceM' (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
 
 ------------------------------------------------------------------------------
 
+{-| Pass the first @n@ inputs to the 'Fold', and ignore the rest.		
+
+>>> L.fold (transduce (take 2) L.list) [1..5]
+[1,2]
+
+>>> L.fold (transduce (take 0) L.list) [1..5]
+[]
+-}
+take :: Int -> Transducer a a ()
+take howmany = 
+    Transducer step howmany done 
+    where
+        step howmanypending i 
+            | howmanypending == 0 = 
+                (0,[],[])
+            | otherwise = 
+                (pred howmanypending,[i],[]) 
+        done = const ((),[])
+
+{-| 		
+
+>>> L.fold (transduce (takeWhile (<3)) L.list) [1..5]
+[1,2]
+-}
+takeWhile :: (a -> Bool) -> Transducer a a ()
+takeWhile predicate = 
+    Transducer step False done 
+    where
+        step False i = 
+            if predicate i 
+               then (False,[i],[])
+               else (True,[],[])
+        step True _ = 
+               (True,[],[])
+        done = const ((),[])
+
+{-| Ignore the firs @n@ inputs, pass all subsequent inputs to the 'Fold'.		
+
+>>> L.fold (transduce (drop 2) L.list) [1..5]
+[3,4,5]
+
+>>> L.fold (transduce (drop 0) L.list) [1..5]
+[1,2,3,4,5]
+-}
+drop :: Int -> Transducer a a ()
+drop howmany = 
+    Transducer step howmany done 
+    where
+        step howmanypending i 
+            | howmanypending == 0 = 
+                (0,[i],[]) 
+            | otherwise = 
+                (pred howmanypending,[],[])
+        done = const ((),[])
+
+
 data SurroundState = PrefixAdded | PrefixPending
 
 {-| Adds a prefix and a suffix to the stream arriving into a 'Fold'.		
@@ -245,8 +307,10 @@ surround (toList -> ps) (toList -> ss) =
             (PrefixAdded, ps ++ [a],[])
         step PrefixAdded a = 
             (PrefixAdded, [a],[])
-        done PrefixPending = ((), ps ++ ss)
-        done PrefixAdded = ((), ss)
+        done PrefixPending = 
+            ((), ps ++ ss)
+        done PrefixAdded = 
+            ((), ss)
 
 {-| Like 'surround', but the prefix and suffix are obtained using a 'IO'
     action.
