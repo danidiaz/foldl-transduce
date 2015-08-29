@@ -1,7 +1,8 @@
 # 0.2.1.0
 
 - Comonad and Extend instances for Transducer 
-- words splitter
+- Added words splitter
+- Added take, drop, takeWhile, dropWhile transducers
 
 # 0.2.0.0
 

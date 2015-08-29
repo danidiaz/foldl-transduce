@@ -33,6 +33,7 @@ module Control.Foldl.Transduce (
     ,   take
     ,   takeWhile
     ,   drop
+    ,   dropWhile
     ,   surround
     ,   surroundIO
         -- * Splitters
@@ -291,6 +292,22 @@ drop howmany =
                 (pred howmanypending,[],[])
         done = const ((),[])
 
+{-| 		
+
+>>> L.fold (transduce (dropWhile (<3)) L.list) [1..5]
+[3,4,5]
+-}
+dropWhile :: (a -> Bool) -> Transducer a a ()
+dropWhile predicate = 
+    Transducer step False done 
+    where
+        step False i = 
+            if predicate i 
+               then (False,[],[])
+               else (True,[i],[])
+        step True i = 
+               (True,[i],[])
+        done = const ((),[])
 
 data SurroundState = PrefixAdded | PrefixPending
 
