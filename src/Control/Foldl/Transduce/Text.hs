@@ -229,26 +229,35 @@ lines = L.Transducer step False done
 
 
 data WordsState = 
-      NoPreviousChar
-    | PreviousCharSpace
-    | PreviousCharNotSpace
+      NoLastChar
+    | LastCharSpace
+    | LastCharNotSpace
 
 {-| Splits a stream of text into words, removing whitespace.
 
 -}
 words :: L.Transducer T.Text T.Text ()
-words = L.Transducer step NoPreviousChar done 
+words = L.Transducer step NoLastChar done 
     where
-        step tstate txt | Data.Text.null txt = (tstate,[],[])
-        step tstate txt | blank txt = 
-            case tstate of
-                NoPreviousChar -> undefined
-                PreviousCharSpace -> undefined
-                PreviousCharNotSpace -> undefined
-        step tstate txt =  
-            let firstcblank = undefined
-                lastcblank = undefined
-            in
-            undefined
-
+        step tstate txt 
+            | Data.Text.null txt = (tstate,[],[])
+            | blank txt = 
+                case tstate of
+                    NoLastChar -> (NoLastChar,[],[])
+                    _ -> (LastCharSpace,[],[])
+            | otherwise =                    
+                let nextstate = 
+                        if isSpace (T.last txt) 
+                           then LastCharSpace 
+                           else LastCharNotSpace
+                    (oldgroup,newgroups) = case (tstate, T.words txt) of
+                        (NoLastChar,w:ws) -> ([w],map pure ws)
+                        (LastCharSpace,ws) -> ([],map pure ws)
+                        (LastCharNotSpace,w:ws) -> 
+                            if isSpace (T.head txt)
+                               then ([],map pure (w:ws))
+                               else ([w],map pure ws)
+                        (_,[]) -> error "never happens, txt not blank"
+                in (nextstate,oldgroup,newgroups)
         done _ = ((),[])
+
