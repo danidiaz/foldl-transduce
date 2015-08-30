@@ -85,6 +85,7 @@ import Control.Foldl.Transduce.Internal (Pair(..),Trio(..),Quartet(..),_1of3)
 >>> import qualified Control.Foldl as L
 >>> import Control.Foldl.Transduce
 >>> import Control.Applicative
+>>> import qualified Control.Comonad.Cofree as C
 >>> import Prelude hiding (take,drop,takeWhile,dropWhile)
 
 -}
@@ -472,8 +473,19 @@ groups splitter transduction oldfold =
     in 
     fmap snd newfold
 
+{-| Like 'groups', but applies a different transduction to each group. 		
+
+>>> :{ 
+    let 
+      transducers = flip C.unfold 0 $ \i -> (,)
+         (ReifiedTransduction (transduce (surround (show i) []))) 
+         (Identity (succ i))
+    in L.fold (groupsVarying (chunksOf 2) transducers L.list) "aabbccdd"
+    :}
+"0aa1bb2cc3dd"
+-}
 groupsVarying :: Transducer a b s 
-              -> Cofree Identity (ReifiedTransduction b c)
+              -> Cofree Identity (ReifiedTransduction b c) -- infinite list of transductions
               -> Transduction a c 
 groupsVarying splitter transductions oldfold = 
     let transductions' = 

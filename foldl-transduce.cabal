@@ -46,8 +46,9 @@ test-suite doctests
   main-is:        doctests.hs
 
   build-depends:
-        base >= 4.4 && < 5
-      , doctest >= 0.10.1
+        base          >= 4.4 && < 5
+      , free          == 4.*
+      , doctest       >= 0.10.1
 
 test-suite tests
   type:           exitcode-stdio-1.0
