@@ -11,10 +11,12 @@ module Control.Foldl.Transduce (
         -- * Transducer types
         Transducer(..)
     ,   Transduction 
+    ,   ReifiedTransduction (..)
     ,   Transduction' 
     ,   ReifiedTransduction' (..)
     ,   TransducerM(..)
     ,   TransductionM
+    ,   ReifiedTransductionM (..)
     ,   TransductionM'
     ,   ReifiedTransductionM' (..)
         -- * Applying transducers
@@ -113,6 +115,8 @@ instance Monad m => Extend (FoldM m a) where
 -}
 type Transduction a b = forall x. Fold b x -> Fold a x
 
+newtype ReifiedTransduction a b = ReifiedTransduction { getTransduction :: Transduction a b }
+
 {-| A more general from of 'Transduction' that adds new information to the
     return value of the 'Fold'.
 
@@ -164,6 +168,8 @@ instance Bifunctor (Transducer i) where
 
 -}
 type TransductionM m a b = forall x. Monad m => FoldM m b x -> FoldM m a x
+
+newtype ReifiedTransductionM m a b = ReifiedTransductionM { getTransductionM :: TransductionM m a b }
 
 type TransductionM' m a b r = forall x. FoldM m b x -> FoldM m a (r,x)
 
@@ -452,11 +458,13 @@ groups splitter transduction oldfold =
     fmap snd newfold
 
 groupsVarying :: Transducer a b s 
-              -> Cofree Identity (ReifiedTransduction' b c ()) 
+              -> Cofree Identity (ReifiedTransduction b c)
               -> Transduction a c 
 groupsVarying splitter transductions oldfold = 
     let transductions' = 
-              hoistCofree (const . runIdentity)
+              fmap (\rt -> 
+                        (ReifiedTransduction' (fmap (fmap ((,) ())) (getTransduction rt))))
+            . hoistCofree (const . runIdentity)
             $ transductions 
         newfold = groupsVarying' splitter L.mconcat transductions' oldfold 
     in 
@@ -522,11 +530,14 @@ groupsM splitter transduction oldfold =
 
 groupsVaryingM :: Monad m 
                => TransducerM m a b s 
-               -> Cofree Identity (ReifiedTransductionM' m b c ())
+               -> Cofree Identity (ReifiedTransductionM m b c)
                -> TransductionM m a c
 groupsVaryingM splitter transductions oldfold = 
     let transductions' = 
-              hoistCofree (const . runIdentity)
+              fmap (\rt -> 
+                        ReifiedTransductionM'
+                        (fmap (fmap ((,) ())) (getTransductionM rt)))
+            . hoistCofree (const . runIdentity)
             $ transductions 
         newfold = groupsVaryingM' splitter (L.generalize L.mconcat) transductions' oldfold 
     in 
@@ -596,7 +607,7 @@ foldsVarying :: Transducer a b s
              -> Transduction a c
 foldsVarying splitter foldlist = groupsVarying splitter transducers
     where
-    foldToTrans f = ReifiedTransduction' (transduce' (chokepoint f))
+    foldToTrans f = ReifiedTransduction (transduce (chokepoint f))
     transducers = fmap foldToTrans foldlist 
 
 {-| Like 'folds', but preserves the return value of the 'Transducer'.
@@ -610,6 +621,14 @@ folds' splitter innerfold somefold =
     where
     innertrans = fmap ((,) ()) . transduce (chokepoint innerfold)
 
+--foldsVarying' :: Transducer a b s 
+--              -> Cofree ((->) c) (Fold b c)
+--              -> Transduction' a c s
+--foldsVarying' splitter innerfold somefold = 
+--    fmap (bimap fst id) (groups' splitter L.mconcat innertrans somefold)
+--    where
+--    innertrans = fmap ((,) ()) . transduce (chokepoint innerfold)
+
 {-| Monadic version of 'folds'.		
 
 -}
@@ -622,7 +641,7 @@ foldsVaryingM :: (Applicative m, Monad m)
               -> TransductionM m a c
 foldsVaryingM splitter foldlist = groupsVaryingM splitter transducers
     where
-    foldToTrans f = ReifiedTransductionM' (transduceM' (chokepointM f))
+    foldToTrans f = ReifiedTransductionM (transduceM (chokepointM f))
     transducers = fmap foldToTrans foldlist 
 
 {-| Monadic version of 'folds''.		
