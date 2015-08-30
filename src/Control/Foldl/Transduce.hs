@@ -9,16 +9,14 @@
 
 module Control.Foldl.Transduce (
         -- * Transducer types
-        Transduction 
-    ,   ReifiedTransduction (..)
+        Transducer(..)
+    ,   Transduction 
     ,   Transduction' 
     ,   ReifiedTransduction' (..)
-    ,   Transducer(..)
+    ,   TransducerM(..)
     ,   TransductionM
-    ,   ReifiedTransductionM (..)
     ,   TransductionM'
     ,   ReifiedTransductionM' (..)
-    ,   TransducerM(..)
         -- * Applying transducers
     ,   transduce
     ,   transduce'
@@ -26,12 +24,15 @@ module Control.Foldl.Transduce (
     ,   transduceM'
         -- * Working with groups
     ,   groups
+    ,   groupsVarying
     ,   groups'
     ,   groupsVarying'
     ,   groupsM
+    ,   groupsVaryingM
     ,   groupsM'
     ,   groupsVaryingM'
     ,   folds
+    ,   foldsVarying
     ,   folds'
     ,   foldsM
     ,   foldsM'
@@ -57,7 +58,7 @@ module Control.Foldl.Transduce (
     ,   module Control.Foldl
     ) where
 
-import Prelude hiding (take,drop,takeWhile,dropWhile)
+import Prelude hiding (take,drop,takeWhile,dropWhile,unfold)
 
 import Data.Bifunctor
 import Data.Monoid
@@ -111,15 +112,13 @@ instance Monad m => Extend (FoldM m a) where
 -}
 type Transduction a b = forall x. Fold b x -> Fold a x
 
-newtype ReifiedTransduction a b = ReifiedTransduction { getTransduction :: Transduction a b }
-
 {-| A more general from of 'Transduction' that adds new information to the
     return value of the 'Fold'.
 
 -}
 type Transduction' a b r = forall x. Fold b x -> Fold a (r,x)
 
-newtype ReifiedTransduction' a b r = ReifiedTransduction' { getTransduction' :: Transduction' a b r }
+newtype ReifiedTransduction' a b r = ReifiedTransduction' { getTransduction' :: forall x. Fold b x -> Fold a (r,x) }
 
 {-| A stateful process that transforms a stream of inputs into a stream of
     outputs, and may optionally demarcate groups in the stream of outputs.
@@ -164,8 +163,6 @@ instance Bifunctor (Transducer i) where
 
 -}
 type TransductionM m a b = forall x. Monad m => FoldM m b x -> FoldM m a x
-
-newtype ReifiedTransductionM m a b = ReifiedTransductionM { getTransductionM :: TransductionM m a b }
 
 type TransductionM' m a b r = forall x. FoldM m b x -> FoldM m a (r,x)
 
@@ -453,6 +450,17 @@ groups splitter transduction oldfold =
     in 
     fmap snd newfold
 
+groupsVarying :: Transducer a b s 
+              -> Cofree Identity (ReifiedTransduction' b c ()) 
+              -> Transduction a c 
+groupsVarying splitter transductions oldfold = 
+    let transductions' = 
+              hoistCofree (const . runIdentity)
+            $ transductions 
+        newfold = groupsVarying' splitter L.mconcat transductions' oldfold 
+    in 
+    fmap snd newfold
+
 {-| Generalized version of 'groups' that preserves the return value of the
     'Transducer'.
 
@@ -466,33 +474,9 @@ groups' :: Transducer a b s
         -> Fold u v -- ^ auxiliary 'Fold' that aggregates the @u@ values produced for each group
         -> Transduction' b c u -- ^ repeatedly applied for processing each group
         -> Transduction' a c (s,v) 
-groups' (Transducer sstep sbegin sdone) somesummarizer t somefold =
-    Fold step (Trio sbegin somesummarizer (t (duplicated somefold))) done 
-      where 
-        step (Trio sstate summarizer innerfold) i = 
-           let 
-               (sstate', oldSplit, newSplits) = sstep sstate i
-               (summarizer',innerfold') = 
-                   foldl' 
-                   (\(summarizer_,innerfold_) somesplit -> 
-                       let (u,resetted) = reset innerfold_
-                       in  (L.fold (duplicated summarizer_) [u], feed resetted somesplit))
-                   (summarizer, feed innerfold oldSplit) 
-                   newSplits
-           in
-           Trio sstate' summarizer' innerfold'
-        feed = L.fold . duplicated
-        reset (Fold _ fstate fdone) = 
-            let (u,nextfold) = fdone fstate
-            in  (u, t (duplicated nextfold))
-        done (Trio sstate summarizer (Fold fstep fstate fdone)) = 
-            let 
-                (s,bss) = sdone sstate
-                (u,extract -> x) = fdone (foldl' fstep fstate bss)
-            in  ((s,L.fold summarizer [u]),x)
-
-
-
+groups' splitter summarizer transduction somefold =
+    let transductions = coiter const (ReifiedTransduction' transduction)
+    in  groupsVarying' splitter summarizer transductions somefold
 
 groupsVarying' :: Transducer a b s
                -> Fold u v -- ^ auxiliary 'Fold' that aggregates the @u@ values produced for each group
@@ -535,38 +519,29 @@ groupsM splitter transduction oldfold =
     in 
     fmap snd newfold
 
+groupsVaryingM :: Monad m 
+               => TransducerM m a b s 
+               -> Cofree Identity (ReifiedTransductionM' m b c ())
+               -> TransductionM m a c
+groupsVaryingM splitter transductions oldfold = 
+    let transductions' = 
+              hoistCofree (const . runIdentity)
+            $ transductions 
+        newfold = groupsVaryingM' splitter (L.generalize L.mconcat) transductions' oldfold 
+    in 
+    fmap snd newfold
+
 {-| Monadic version of 'groups''.		
 
 -}
-groupsM' :: Monad m => TransducerM m a b s -> FoldM m u v -> TransductionM' m b c u -> TransductionM' m a c (s,v) 
-groupsM' (TransducerM sstep sbegin sdone) somesummarizer t somefold =
-    FoldM step (sbegin >>= \x -> return (Trio x somesummarizer (t (duplicated somefold)))) done        
-    where
-        step (Trio sstate summarizer innerfold) i = do
-            (sstate', oldSplit, newSplits) <- sstep sstate i 
-            innerfold' <- feed innerfold oldSplit
-            (summarizer',innerfold'') <- foldlM step' (summarizer,innerfold') newSplits
-            return $! Trio sstate' summarizer' innerfold''
-
-        step' = \(summarizer, innerfold) is -> do
-            (u,innerfold') <- reset innerfold 
-            summarizer' <- L.foldM (duplicated summarizer) [u]
-            innerfold'' <- feed innerfold' is
-            return $! (summarizer',innerfold'') 
-
-        feed = L.foldM . duplicated
-
-        reset (FoldM _ fstate fdone) = do
-           (u,x) <- fdone =<< fstate 
-           return (u, t (duplicated x))
-
-        done (Trio sstate summarizer (FoldM fstep fstate fdone)) = do
-            (s,bss) <- sdone sstate
-            (u,finalfold) <- fdone =<< flip (foldlM fstep) bss =<< fstate
-            v <- L.foldM summarizer [u]
-            r <- L.foldM finalfold []
-            return ((s,v),r)
-
+groupsM' :: Monad m 
+         => TransducerM m a b s -- ^
+         -> FoldM m u v 
+         -> TransductionM' m b c u 
+         -> TransductionM' m a c (s,v) 
+groupsM' splitter summarizer transduction somefold =
+    let transductions = coiter const (ReifiedTransductionM' transduction)
+    in  groupsVaryingM' splitter summarizer transductions somefold
 
 groupsVaryingM' :: Monad m 
                 => TransducerM m a b s 
@@ -614,6 +589,16 @@ groupsVaryingM' (TransducerM sstep sbegin sdone) somesummarizer (ReifiedTransduc
 -}
 folds :: Transducer a b s -> Fold b c -> Transduction a c
 folds splitter f = groups splitter (transduce (chokepoint f))
+
+foldsVarying :: Transducer a b s 
+             -> Cofree Identity (Fold b c) -- ^ infinite list of 'Fold's.
+             -> Transduction a c
+foldsVarying splitter foldlist = groupsVarying splitter transducers
+    where
+    mappytrans :: Fold b c -> ReifiedTransduction' b c ()  
+    mappytrans = ReifiedTransduction' . fmap (fmap ((,) ())) . transduce . chokepoint
+    transducers = fmap mappytrans foldlist 
+    --transducers = fmap (ReifiedTransduction' . _ . transduce . chokepoint) foldlist 
 
 {-| Like 'folds', but preserves the return value of the 'Transducer'.
 
