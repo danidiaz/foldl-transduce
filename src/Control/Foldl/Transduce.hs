@@ -10,10 +10,14 @@
 module Control.Foldl.Transduce (
         -- * Transducer types
         Transduction 
+    ,   ReifiedTransduction (..)
     ,   Transduction' 
+    ,   ReifiedTransduction' (..)
     ,   Transducer(..)
     ,   TransductionM
+    ,   ReifiedTransductionM (..)
     ,   TransductionM'
+    ,   ReifiedTransductionM' (..)
     ,   TransducerM(..)
         -- * Applying transducers
     ,   transduce
@@ -23,8 +27,10 @@ module Control.Foldl.Transduce (
         -- * Working with groups
     ,   groups
     ,   groups'
+    ,   groupsVarying'
     ,   groupsM
     ,   groupsM'
+    ,   groupsVaryingM'
     ,   folds
     ,   folds'
     ,   foldsM
@@ -62,9 +68,10 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Comonad
+import Control.Comonad.Cofree
 import Control.Foldl (Fold(..),FoldM(..))
 import qualified Control.Foldl as L
-import Control.Foldl.Transduce.Internal (Pair(..),Trio(..),_1of3)
+import Control.Foldl.Transduce.Internal (Pair(..),Trio(..),Quartet(..),_1of3)
 
 {- $setup
 
@@ -104,12 +111,15 @@ instance Monad m => Extend (FoldM m a) where
 -}
 type Transduction a b = forall x. Fold b x -> Fold a x
 
+newtype ReifiedTransduction a b = ReifiedTransduction { getTransduction :: Transduction a b }
 
 {-| A more general from of 'Transduction' that adds new information to the
     return value of the 'Fold'.
 
 -}
 type Transduction' a b r = forall x. Fold b x -> Fold a (r,x)
+
+newtype ReifiedTransduction' a b r = ReifiedTransduction' { getTransduction' :: Transduction' a b r }
 
 {-| A stateful process that transforms a stream of inputs into a stream of
     outputs, and may optionally demarcate groups in the stream of outputs.
@@ -155,10 +165,11 @@ instance Bifunctor (Transducer i) where
 -}
 type TransductionM m a b = forall x. Monad m => FoldM m b x -> FoldM m a x
 
-{-| Like 'Transduction'', but works on monadic 'Fold's.		
+newtype ReifiedTransductionM m a b = ReifiedTransductionM { getTransductionM :: TransductionM m a b }
 
--}
 type TransductionM' m a b r = forall x. FoldM m b x -> FoldM m a (r,x)
+
+newtype ReifiedTransductionM' m a b r = ReifiedTransductionM' { getTransductionM' :: TransductionM' m a b r }
 
 {-| Like 'Transducer', but monadic.
 
@@ -471,8 +482,43 @@ groups' (Transducer sstep sbegin sdone) somesummarizer t somefold =
            in
            Trio sstate' summarizer' innerfold'
         feed = L.fold . duplicated
-        reset (Fold _ fstate fdone) = fmap (t . duplicated) (fdone fstate) 
+        reset (Fold _ fstate fdone) = 
+            let (u,nextfold) = fdone fstate
+            in  (u, t (duplicated nextfold))
         done (Trio sstate summarizer (Fold fstep fstate fdone)) = 
+            let 
+                (s,bss) = sdone sstate
+                (u,extract -> x) = fdone (foldl' fstep fstate bss)
+            in  ((s,L.fold summarizer [u]),x)
+
+
+
+
+groupsVarying' :: Transducer a b s
+               -> Fold u v -- ^ auxiliary 'Fold' that aggregates the @u@ values produced for each group
+               -> Cofree ((->) u) (ReifiedTransduction' b c u) -- ^ a machine that eats @u@ values and spits transductions
+               -> Transduction' a c (s,v) 
+groupsVarying' (Transducer sstep sbegin sdone) somesummarizer (ReifiedTransduction' t0 :< somemachine) somefold =
+    Fold step (Quartet sbegin somesummarizer (t0 (duplicated somefold)) somemachine) done 
+      where 
+        step (Quartet sstate summarizer innerfold machine) i =
+           let 
+               (sstate', oldSplit, newSplits) = sstep sstate i
+               (summarizer',innerfold',machine') = 
+                   foldl' 
+                   (\(summarizer_,innerfold_,machine_) somesplit -> 
+                       let (u,resetted,nextmachine) = reset machine_ innerfold_
+                       in  (L.fold (duplicated summarizer_) [u], feed resetted somesplit,nextmachine))
+                   (summarizer, feed innerfold oldSplit,machine) 
+                   newSplits
+           in
+           Quartet sstate' summarizer' innerfold' machine'
+        feed = L.fold . duplicated
+        reset machine (Fold _ fstate fdone) = 
+            let (u,nextfold) = fdone fstate
+                ReifiedTransduction' t1 :< nextmachine = machine u
+            in  (u,t1 (duplicated nextfold),nextmachine)
+        done (Quartet sstate summarizer (Fold fstep fstate fdone) _) = 
             let 
                 (s,bss) = sdone sstate
                 (u,extract -> x) = fdone (foldl' fstep fstate bss)
@@ -515,6 +561,43 @@ groupsM' (TransducerM sstep sbegin sdone) somesummarizer t somefold =
            return (u, t (duplicated x))
 
         done (Trio sstate summarizer (FoldM fstep fstate fdone)) = do
+            (s,bss) <- sdone sstate
+            (u,finalfold) <- fdone =<< flip (foldlM fstep) bss =<< fstate
+            v <- L.foldM summarizer [u]
+            r <- L.foldM finalfold []
+            return ((s,v),r)
+
+
+groupsVaryingM' :: Monad m 
+                => TransducerM m a b s 
+                -> FoldM m u v 
+                -> Cofree ((->) u) (ReifiedTransductionM' m b c u) -- ^ a machine that eats @u@ values and spits transductions
+                -> TransductionM' m a c (s,v) 
+
+groupsVaryingM' (TransducerM sstep sbegin sdone) somesummarizer (ReifiedTransductionM' t0 :< somemachine) somefold =
+    FoldM step (sbegin >>= \x -> return (Quartet x somesummarizer (t0 (duplicated somefold)) somemachine)) done        
+    where
+        step (Quartet sstate summarizer innerfold machine) i = do
+            (sstate', oldSplit, newSplits) <- sstep sstate i 
+            innerfold' <- feed innerfold oldSplit
+            (summarizer',innerfold'',machine') <- foldlM step' (summarizer,innerfold',machine) newSplits
+            return $! Quartet sstate' summarizer' innerfold'' machine'
+
+        step' = \(summarizer,innerfold,machine) is -> do
+            (u,innerfold',machine') <- reset machine innerfold 
+            summarizer' <- L.foldM (duplicated summarizer) [u]
+            innerfold'' <- feed innerfold' is
+            return $! (summarizer',innerfold'',machine') 
+
+        feed = L.foldM . duplicated
+
+        reset machine (FoldM _ fstate fdone) = do
+           (u,nextfold) <- fdone =<< fstate 
+           let 
+               ReifiedTransductionM' t1 :< nextmachine = machine u
+           return (u,t1 (duplicated nextfold),nextmachine)
+
+        done (Quartet sstate summarizer (FoldM fstep fstate fdone) _) = do
             (s,bss) <- sdone sstate
             (u,finalfold) <- fdone =<< flip (foldlM fstep) bss =<< fstate
             v <- L.foldM summarizer [u]

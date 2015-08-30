@@ -31,7 +31,8 @@ Library
         bifunctors    == 5.*               ,
         semigroupoids >= 5.0               ,
         foldl         >= 1.1      && < 2   ,
-        comonad       == 4.*
+        comonad       == 4.*               ,
+        free          == 4.*
     Exposed-Modules:
         Control.Foldl.Transduce,
         Control.Foldl.Transduce.Text,
