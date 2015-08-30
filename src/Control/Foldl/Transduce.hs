@@ -485,7 +485,7 @@ groups splitter transduction oldfold =
 "0aa1bb2cc3dd"
 -}
 groupsVarying :: Transducer a b s 
-              -> Cofree Identity (ReifiedTransduction b c) -- infinite list of transductions
+              -> Cofree Identity (ReifiedTransduction b c) -- ^ infinite list of transductions
               -> Transduction a c 
 groupsVarying splitter transductions oldfold = 
     let transductions' = 
