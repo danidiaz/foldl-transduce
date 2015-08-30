@@ -35,6 +35,7 @@ module Control.Foldl.Transduce (
     ,   foldsVarying
     ,   folds'
     ,   foldsM
+    ,   foldsVaryingM
     ,   foldsM'
         -- * Transducers
     ,   take
@@ -118,7 +119,7 @@ type Transduction a b = forall x. Fold b x -> Fold a x
 -}
 type Transduction' a b r = forall x. Fold b x -> Fold a (r,x)
 
-newtype ReifiedTransduction' a b r = ReifiedTransduction' { getTransduction' :: forall x. Fold b x -> Fold a (r,x) }
+newtype ReifiedTransduction' a b r = ReifiedTransduction' { getTransduction' :: Transduction' a b r }
 
 {-| A stateful process that transforms a stream of inputs into a stream of
     outputs, and may optionally demarcate groups in the stream of outputs.
@@ -595,10 +596,8 @@ foldsVarying :: Transducer a b s
              -> Transduction a c
 foldsVarying splitter foldlist = groupsVarying splitter transducers
     where
-    mappytrans :: Fold b c -> ReifiedTransduction' b c ()  
-    mappytrans = ReifiedTransduction' . fmap (fmap ((,) ())) . transduce . chokepoint
-    transducers = fmap mappytrans foldlist 
-    --transducers = fmap (ReifiedTransduction' . _ . transduce . chokepoint) foldlist 
+    foldToTrans f = ReifiedTransduction' (transduce' (chokepoint f))
+    transducers = fmap foldToTrans foldlist 
 
 {-| Like 'folds', but preserves the return value of the 'Transducer'.
 
@@ -614,9 +613,17 @@ folds' splitter innerfold somefold =
 {-| Monadic version of 'folds'.		
 
 -}
-foldsM :: (Applicative m,Monad m) => TransducerM m a b s -> FoldM m b c -> TransductionM m a c
+foldsM :: (Applicative m, Monad m) => TransducerM m a b s -> FoldM m b c -> TransductionM m a c
 foldsM splitter f = groupsM splitter (transduceM (chokepointM f))
 
+foldsVaryingM :: (Applicative m, Monad m) 
+              => TransducerM m a b s 
+              -> Cofree Identity (FoldM m b c) -- ^ infinite list of 'FoldM's.
+              -> TransductionM m a c
+foldsVaryingM splitter foldlist = groupsVaryingM splitter transducers
+    where
+    foldToTrans f = ReifiedTransductionM' (transduceM' (chokepointM f))
+    transducers = fmap foldToTrans foldlist 
 
 {-| Monadic version of 'folds''.		
 
