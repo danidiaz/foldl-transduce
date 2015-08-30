@@ -36,14 +36,17 @@ module Control.Foldl.Transduce (
     ,   folds
     ,   foldsVarying
     ,   folds'
+    ,   foldsVarying'
     ,   foldsM
     ,   foldsVaryingM
     ,   foldsM'
+    ,   foldsVaryingM'
         -- * Transducers
     ,   take
     ,   takeWhile
     ,   drop
     ,   dropWhile
+    ,   dropAll
     ,   surround
     ,   surroundIO
         -- * Splitters
@@ -324,6 +327,18 @@ dropWhile predicate =
                (True,[i],[])
         done = const ((),[])
 
+{-| Polymorphic in both inputs and outputs.		
+
+-}
+dropAll :: Transducer a b ()
+dropAll = 
+    Transducer step () done 
+    where
+        step _ _ = 
+            ((),[],[])
+        done = 
+            const ((),[])
+
 data SurroundState = PrefixAdded | PrefixPending
 
 {-| Adds a prefix and a suffix to the stream arriving into a 'Fold'.		
@@ -412,19 +427,19 @@ foldifyM (TransducerM step begin done) =
     'Fold' downstream when upstream closes.		
 
 -}
-chokepoint :: Fold a r -> Transducer a r ()
+chokepoint :: Fold a r -> Transducer a r r
 chokepoint (Fold fstep fstate fdone) =
     (Transducer wstep fstate wdone)
     where
         wstep = \fstate' i -> (fstep fstate' i,[],[])
-        wdone = \fstate' -> ((),[fdone fstate'])
+        wdone = \fstate' -> (\r -> (r,[r])) (fdone fstate')
 
-chokepointM :: Applicative m => FoldM m a r -> TransducerM m a r ()
+chokepointM :: Applicative m => FoldM m a r -> TransducerM m a r r
 chokepointM (FoldM fstep fstate fdone) = 
     (TransducerM wstep fstate wdone)
     where
         wstep = \fstate' i -> fmap (\s -> (s,[],[])) (fstep fstate' i)
-        wdone = \fstate' -> fmap (\r -> ((),[r])) (fdone fstate')
+        wdone = \fstate' -> fmap (\r -> (r,[r])) (fdone fstate')
 
 
 {-| Changes the base monad used by a 'TransducerM'.		
@@ -621,13 +636,14 @@ folds' splitter innerfold somefold =
     where
     innertrans = fmap ((,) ()) . transduce (chokepoint innerfold)
 
---foldsVarying' :: Transducer a b s 
---              -> Cofree ((->) c) (Fold b c)
---              -> Transduction' a c s
---foldsVarying' splitter innerfold somefold = 
---    fmap (bimap fst id) (groups' splitter L.mconcat innertrans somefold)
---    where
---    innertrans = fmap ((,) ()) . transduce (chokepoint innerfold)
+foldsVarying' :: Transducer a b s 
+              -> Cofree ((->) c) (Fold b c)
+              -> Transduction' a c s
+foldsVarying' splitter foldlist somefold = 
+    fmap fst $ groupsVarying' splitter somefold transducers (pure ())
+    where
+    foldToTrans f = ReifiedTransduction' (transduce' (chokepoint f))
+    transducers = fmap foldToTrans foldlist 
 
 {-| Monadic version of 'folds'.		
 
@@ -642,6 +658,16 @@ foldsVaryingM :: (Applicative m, Monad m)
 foldsVaryingM splitter foldlist = groupsVaryingM splitter transducers
     where
     foldToTrans f = ReifiedTransductionM (transduceM (chokepointM f))
+    transducers = fmap foldToTrans foldlist 
+
+foldsVaryingM' :: (Applicative m, Monad m)
+               => TransducerM m a b s 
+               -> Cofree ((->) c) (FoldM m b c)
+               -> TransductionM' m a c s
+foldsVaryingM' splitter foldlist somefold = 
+    fmap fst $ groupsVaryingM' splitter somefold transducers (pure ())
+    where
+    foldToTrans f = ReifiedTransductionM' (transduceM' (chokepointM f))
     transducers = fmap foldToTrans foldlist 
 
 {-| Monadic version of 'folds''.		
