@@ -1,3 +1,9 @@
+# 0.2.3.0
+
+- Added dependency on free
+- Added groupVarying* and foldVarying* functions
+- Added dropAll
+
 # 0.2.1.0
 
 - Comonad and Extend instances for Transducer 
