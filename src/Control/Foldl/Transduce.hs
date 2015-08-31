@@ -147,13 +147,13 @@ newtype ReifiedTransduction' a b r = ReifiedTransduction' { getTransduction' :: 
     well as any pending outputs.
 -}
 data Transducer i o r
-     = forall x. Transducer (x -> i -> (x,[o],[[o]])) x (x -> (r,[o]))
+     = forall x. Transducer (x -> i -> (x,[o],[[o]])) x (x -> (r,[o],[[o]]))
 
 instance Comonad (Transducer i o) where
-    extract (Transducer _ begin done) = fst (done begin)
+    extract (Transducer _ begin done) = _1of3 (done begin)
     {-# INLINABLE extract #-}
 
-    duplicate (Transducer step begin done) = Transducer step begin (\x -> (Transducer step x done,[]))
+    duplicate (Transducer step begin done) = Transducer step begin (\x -> (Transducer step x done,[],[]))
     {-# INLINABLE duplicate #-}
 
 instance Extend (Transducer i o) where
@@ -161,11 +161,18 @@ instance Extend (Transducer i o) where
     {-# INLINABLE duplicated #-}
 
 instance Functor (Transducer i o) where
-    fmap f (Transducer step begin done) = Transducer step begin (first f . done)
+    fmap f (Transducer step begin done) = 
+        Transducer 
+            step 
+            begin 
+            ((\(x,xs,xss) -> (f x,xs,xss)) . done)
 
 instance Bifunctor (Transducer i) where
     first f (Transducer step begin done) =
-        Transducer (fmap (\(x,xs,xss) -> (x,map f xs, map (map f) xss)) . step) begin (fmap (fmap f) . done)
+        Transducer 
+            (fmap (\(x,xs,xss) -> (x,map f xs, map (map f) xss)) . step) 
+            begin 
+            ((\(x,xs,xss) -> (x,map f xs, map (map f) xss)) . done) 
     second f w = fmap f w
 
 {-| Like 'Transduction', but works on monadic 'Fold's.		
@@ -183,24 +190,27 @@ newtype ReifiedTransductionM' m a b r = ReifiedTransductionM' { getTransductionM
 
 -}
 data TransducerM m i o r
-     = forall x. TransducerM (x -> i -> m (x,[o],[[o]])) (m x) (x -> m (r,[o]))
+     = forall x. TransducerM (x -> i -> m (x,[o],[[o]])) (m x) (x -> m (r,[o],[[o]]))
 
 instance Monad m => Functor (TransducerM m i o) where
     fmap f (TransducerM step begin done) = TransducerM step begin done'
       where
         done' x = do
-            (r,os) <- done x
+            (r,os,oss) <- done x
             let r' = f r
-            return $! (r' `seq` (r', os))
+            return $! (r' `seq` (r',os,oss))
 
 instance (Functor m, Monad m) => Bifunctor (TransducerM m i) where
     first f (TransducerM step begin done) =
-        TransducerM (fmap (fmap (\(x,xs,xss) -> (x,map f xs, map (map f) xss))) . step) begin (fmap (fmap (fmap f)) . done)
+        TransducerM 
+        (fmap (fmap (\(x,xs,xss) -> (x,map f xs, map (map f) xss))) . step) 
+        begin 
+        (fmap (\(x,xs,xss) -> (x,map f xs, map (map f) xss)) . done) 
     second f w = fmap f w
 
 instance Monad m => Extend (TransducerM m i o) where
     duplicated (TransducerM step begin done) = 
-        TransducerM step begin (\x -> return $! (TransducerM step (return x) done,[]))
+        TransducerM step begin (\x -> return $! (TransducerM step (return x) done,[],[]))
     {-# INLINABLE duplicated #-}
 
 {-| Apply a 'Transducer' to a 'Fold', discarding the return value of the
@@ -227,9 +237,9 @@ transduce' (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
                 in
                 Pair ws' (foldl' fstep fs (os ++ mconcat oss))  
             done (Pair ws fs) = 
-                let (wr,os) = wdone ws
+                let (wr,os,oss) = wdone ws
                 in 
-                (,) wr (fdone (foldl' fstep fs os))
+                (,) wr (fdone (foldl' fstep fs (os ++ mconcat oss)))
 
 
 {-| Like 'transduce', but works on monadic 'Fold's.		
@@ -250,8 +260,8 @@ transduceM' (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
                 fs' <- foldlM fstep fs (os ++ mconcat oss)
                 return $! Pair ws' fs'
             done (Pair ws fs) = do
-                (wr,os) <- wdone ws
-                fr <- fdone =<< foldlM fstep fs os
+                (wr,os,oss) <- wdone ws
+                fr <- fdone =<< foldlM fstep fs (os ++ mconcat oss)
                 return $! (,) wr fr
 
 ------------------------------------------------------------------------------
@@ -273,7 +283,7 @@ take howmany =
                 (0,[],[])
             | otherwise = 
                 (pred howmanypending,[i],[]) 
-        done = const ((),[])
+        done = const ((),[],[])
 
 {-| 		
 
@@ -290,7 +300,7 @@ takeWhile predicate =
                else (True,[],[])
         step True _ = 
                (True,[],[])
-        done = const ((),[])
+        done = const ((),[],[])
 
 {-| Ignore the firs @n@ inputs, pass all subsequent inputs to the 'Fold'.		
 
@@ -309,7 +319,7 @@ drop howmany =
                 (0,[i],[]) 
             | otherwise = 
                 (pred howmanypending,[],[])
-        done = const ((),[])
+        done = const ((),[],[])
 
 {-| 		
 
@@ -326,7 +336,7 @@ dropWhile predicate =
                else (True,[i],[])
         step True i = 
                (True,[i],[])
-        done = const ((),[])
+        done = const ((),[],[])
 
 {-| Polymorphic in both inputs and outputs.		
 
@@ -338,7 +348,7 @@ dropAll =
         step _ _ = 
             ((),[],[])
         done = 
-            const ((),[])
+            const ((),[],[])
 
 data SurroundState = PrefixAdded | PrefixPending
 
@@ -347,7 +357,7 @@ data SurroundState = PrefixAdded | PrefixPending
 >>> L.fold (transduce (surround "prefix" "suffix") L.list) "middle"
 "prefixmiddlesuffix"
 -}
-surround :: (Foldable p, Foldable s) => p a -> s a -> Transducer a a ()
+surround :: (Traversable p, Traversable s) => p a -> s a -> Transducer a a ()
 surround (toList -> ps) (toList -> ss) = 
     Transducer step PrefixPending done 
     where
@@ -356,9 +366,9 @@ surround (toList -> ps) (toList -> ss) =
         step PrefixAdded a = 
             (PrefixAdded, [a],[])
         done PrefixPending = 
-            ((), ps ++ ss)
+            ((), ps ++ ss, [])
         done PrefixAdded = 
-            ((), ss)
+            ((), ss, [])
 
 {-| Like 'surround', but the prefix and suffix are obtained using a 'IO'
     action.
@@ -366,7 +376,7 @@ surround (toList -> ps) (toList -> ss) =
 >>> L.foldM (transduceM (surroundIO (return "prefix") (return "suffix")) (L.generalize L.list)) "middle"
 "prefixmiddlesuffix"
 -}
-surroundIO :: (Foldable p, Foldable s, Functor m, MonadIO m) 
+surroundIO :: (Traversable p, Traversable s, Functor m, MonadIO m) 
            => m (p a) 
            -> m (s a) 
            -> TransducerM m a a ()
@@ -381,10 +391,10 @@ surroundIO prefixa suffixa =
         done PrefixPending = do
             ps <- fmap toList prefixa
             ss <- fmap toList suffixa
-            return ((), toList ps ++ toList ss)
+            return ((), toList ps ++ toList ss, [])
         done PrefixAdded = do
             ss <- fmap toList suffixa
-            return ((), toList ss)
+            return ((), toList ss , [])
 
 ------------------------------------------------------------------------------
 
@@ -415,32 +425,32 @@ _simplify (TransducerM step begin done) = Transducer step' begin' done'
 -}
 foldify :: Transducer i o s -> Fold i s
 foldify (Transducer step begin done) =
-    Fold (\x i -> _1of3 (step x i)) begin (\x -> fst (done x))
+    Fold (\x i -> _1of3 (step x i)) begin (\x -> _1of3 (done x))
 
 {-| Monadic version of 'foldify'.		
 
 -}
 foldifyM :: Functor m => TransducerM m i o s -> FoldM m i s
 foldifyM (TransducerM step begin done) =
-    FoldM (\x i -> fmap _1of3 (step x i)) begin (\x -> fmap fst (done x))
+    FoldM (\x i -> fmap _1of3 (step x i)) begin (\x -> fmap _1of3 (done x))
 
 {-| Transforms a 'Fold' into a 'Transducer' that sends the return value of the
     'Fold' downstream when upstream closes.		
 
 -}
-chokepoint :: Fold a r -> Transducer a r r
-chokepoint (Fold fstep fstate fdone) =
+condense :: Fold a r -> Transducer a r r
+condense (Fold fstep fstate fdone) =
     (Transducer wstep fstate wdone)
     where
         wstep = \fstate' i -> (fstep fstate' i,[],[])
-        wdone = \fstate' -> (\r -> (r,[r])) (fdone fstate')
+        wdone = \fstate' -> (\r -> (r,[r],[])) (fdone fstate')
 
-chokepointM :: Applicative m => FoldM m a r -> TransducerM m a r r
-chokepointM (FoldM fstep fstate fdone) = 
+condenseM :: Applicative m => FoldM m a r -> TransducerM m a r r
+condenseM (FoldM fstep fstate fdone) = 
     (TransducerM wstep fstate wdone)
     where
         wstep = \fstate' i -> fmap (\s -> (s,[],[])) (fstep fstate' i)
-        wdone = \fstate' -> fmap (\r -> (r,[r])) (fdone fstate')
+        wdone = \fstate' -> fmap (\r -> (r,[r],[])) (fdone fstate')
 
 
 {-| Changes the base monad used by a 'TransducerM'.		
@@ -526,13 +536,16 @@ groupsVarying' (Transducer sstep sbegin sdone) somesummarizer (ReifiedTransducti
                (sstate', oldSplit, newSplits) = sstep sstate i
                (summarizer',innerfold',machine') = 
                    foldl' 
-                   (\(summarizer_,innerfold_,machine_) somesplit -> 
-                       let (u,resetted,nextmachine) = reset machine_ innerfold_
-                       in  (L.fold (duplicated summarizer_) [u], feed resetted somesplit,nextmachine))
+                   step'
                    (summarizer, feed innerfold oldSplit,machine) 
                    newSplits
            in
            Quartet sstate' summarizer' innerfold' machine'
+        
+        step' (summarizer_,innerfold_,machine_) somesplit = 
+           let (u,resetted,nextmachine) = reset machine_ innerfold_
+           in  (L.fold (duplicated summarizer_) [u], feed resetted somesplit,nextmachine)
+
         feed = L.fold . duplicated
         reset machine (Fold _ fstate fdone) = 
             let (u,nextfold) = fdone fstate
@@ -627,14 +640,14 @@ groupsVaryingM' (TransducerM sstep sbegin sdone) somesummarizer (ReifiedTransduc
 [6,15,7]
 -}
 folds :: Transducer a b s -> Fold b c -> Transduction a c
-folds splitter f = groups splitter (transduce (chokepoint f))
+folds splitter f = groups splitter (transduce (condense f))
 
 foldsVarying :: Transducer a b s 
              -> Cofree Identity (Fold b c) -- ^ infinite list of 'Fold's.
              -> Transduction a c
 foldsVarying splitter foldlist = groupsVarying splitter transducers
     where
-    foldToTrans f = ReifiedTransduction (transduce (chokepoint f))
+    foldToTrans f = ReifiedTransduction (transduce (condense f))
     transducers = fmap foldToTrans foldlist 
 
 {-| Like 'folds', but preserves the return value of the 'Transducer'.
@@ -646,7 +659,7 @@ folds' :: Transducer a b s -> Fold b c -> Transduction' a c s
 folds' splitter innerfold somefold = 
     fmap (bimap fst id) (groups' splitter L.mconcat innertrans somefold)
     where
-    innertrans = fmap ((,) ()) . transduce (chokepoint innerfold)
+    innertrans = fmap ((,) ()) . transduce (condense innerfold)
 
 foldsVarying' :: Transducer a b s 
               -> Cofree ((->) c) (Fold b c)
@@ -654,14 +667,14 @@ foldsVarying' :: Transducer a b s
 foldsVarying' splitter foldlist somefold = 
     fmap fst $ groupsVarying' splitter somefold transducers (pure ())
     where
-    foldToTrans f = ReifiedTransduction' (transduce' (chokepoint f))
+    foldToTrans f = ReifiedTransduction' (transduce' (condense f))
     transducers = fmap foldToTrans foldlist 
 
 {-| Monadic version of 'folds'.		
 
 -}
 foldsM :: (Applicative m, Monad m) => TransducerM m a b s -> FoldM m b c -> TransductionM m a c
-foldsM splitter f = groupsM splitter (transduceM (chokepointM f))
+foldsM splitter f = groupsM splitter (transduceM (condenseM f))
 
 foldsVaryingM :: (Applicative m, Monad m) 
               => TransducerM m a b s 
@@ -669,7 +682,7 @@ foldsVaryingM :: (Applicative m, Monad m)
               -> TransductionM m a c
 foldsVaryingM splitter foldlist = groupsVaryingM splitter transducers
     where
-    foldToTrans f = ReifiedTransductionM (transduceM (chokepointM f))
+    foldToTrans f = ReifiedTransductionM (transduceM (condenseM f))
     transducers = fmap foldToTrans foldlist 
 
 foldsVaryingM' :: (Applicative m, Monad m)
@@ -679,7 +692,7 @@ foldsVaryingM' :: (Applicative m, Monad m)
 foldsVaryingM' splitter foldlist somefold = 
     fmap fst $ groupsVaryingM' splitter somefold transducers (pure ())
     where
-    foldToTrans f = ReifiedTransductionM' (transduceM' (chokepointM f))
+    foldToTrans f = ReifiedTransductionM' (transduceM' (condenseM f))
     transducers = fmap foldToTrans foldlist 
 
 {-| Monadic version of 'folds''.		
@@ -689,7 +702,7 @@ foldsM' :: (Applicative m,Monad m) => TransducerM m a b s -> FoldM m b c -> Tran
 foldsM' splitter innerfold somefold = 
     fmap (bimap fst id) (groupsM' splitter (L.generalize L.mconcat) innertrans somefold)
     where
-    innertrans = fmap ((,) ()) . transduceM (chokepointM innerfold)
+    innertrans = fmap ((,) ()) . transduceM (condenseM innerfold)
 
 ------------------------------------------------------------------------------
 

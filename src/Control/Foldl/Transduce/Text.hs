@@ -171,7 +171,7 @@ stripStart = L.Transducer step False done
             if blank i 
                 then (False,[],[])
                 else (True, [T.stripStart i],[])
-        done _  = ((),[])
+        done _  = ((),[],[])
 
 {-| Remove trailing white space from a stream of 'Text'.		
 
@@ -193,7 +193,7 @@ stripEnd = L.Transducer step [] done
                 else ([i], reverse txts, [])
         done txts = case reverse txts of
             txt : _ -> ((), [T.stripEnd txt])
-            _ -> ((), [])
+            _ -> ((), [], [])
 
 {-| Splits a stream of text into lines, removing the newlines.
 
@@ -225,7 +225,7 @@ lines = L.Transducer step False done
                        (True,_) -> (lastc, [], map pure txts)
                        (False,t:ts) -> (lastc, [t], map pure ts)
 
-        done _ = ((),[])
+        done _ = ((),[],[])
 
 
 data WordsState = 
@@ -268,5 +268,5 @@ words = L.Transducer step NoLastChar done
                                else ([w],map pure ws)
                         (_,[]) -> error "never happens, txt not blank"
                 in (nextstate,oldgroup,newgroups)
-        done _ = ((),[])
+        done _ = ((),[],[])
 
