@@ -14,6 +14,7 @@ module Control.Foldl.Transduce (
     ,   ReifiedTransduction (..)
     ,   Transduction' 
     ,   ReifiedTransduction' (..)
+        -- ** Monadic transducer types
     ,   TransducerM(..)
     ,   TransductionM
     ,   ReifiedTransductionM (..)
@@ -24,17 +25,23 @@ module Control.Foldl.Transduce (
     ,   transduce'
     ,   transduceM
     ,   transduceM'
-        -- * Working with groups
+        -- * Folding over groups
     ,   folds
+    ,   folds'
     ,   foldsM
+    ,   foldsM'
+        -- * Other group operations
     ,   groups
     ,   evenly
     ,   wrap    
+        --
     ,   groups'
     ,   evenly'
+        --
     ,   groupsM
     ,   evenlyM
     ,   wrapM
+        --
     ,   groupsM'
     ,   evenlyM'
         -- * Transducers
@@ -55,11 +62,13 @@ module Control.Foldl.Transduce (
     ,   condense
     ,   condenseM
     ,   hoistTransducer
+        -- * Fold utilities
     ,   hoistFold
         -- * Re-exports
         -- $reexports
     ,   module Data.Functor.Extend
     ,   module Control.Foldl
+    ,   module Control.Comonad.Cofree
     ) where
 
 import Prelude hiding (take,drop,takeWhile,dropWhile,unfold)
@@ -680,11 +689,11 @@ folds splitter f = groups splitter (evenly (transduce (condense f)))
 >>> L.fold (folds' (chunksOf 3) L.sum L.list) [1..7]
 ((),[6,15,7])
 -}
---folds' :: Transducer a b s -> Fold b c -> Transduction' a c s
---folds' splitter innerfold somefold = 
---    fmap (bimap fst id) (groups' splitter L.mconcat innertrans somefold)
---    where
---    innertrans = fmap ((,) ()) . transduce (condense innerfold)
+folds' :: Transducer a b s -> Fold b c -> Transduction' a c s
+folds' splitter innerfold somefold = 
+    fmap (bimap fst id) (groups' splitter L.mconcat (evenly' innertrans) somefold)
+    where
+    innertrans = fmap ((,) ()) . transduce (condense innerfold)
 --
 --foldsVarying' :: Transducer a b s 
 --              -> Cofree ((->) c) (Fold b c)
@@ -723,11 +732,11 @@ foldsM splitter f = groupsM splitter (evenlyM (transduceM (condenseM f)))
 --{-| Monadic version of 'folds''.		
 --
 ---}
---foldsM' :: (Applicative m,Monad m) => TransducerM m a b s -> FoldM m b c -> TransductionM' m a c s
---foldsM' splitter innerfold somefold = 
---    fmap (bimap fst id) (groupsM' splitter (L.generalize L.mconcat) innertrans somefold)
---    where
---    innertrans = fmap ((,) ()) . transduceM (condenseM innerfold)
+foldsM' :: (Applicative m,Monad m) => TransducerM m a b s -> FoldM m b c -> TransductionM' m a c s
+foldsM' splitter innerfold somefold = 
+    fmap (bimap fst id) (groupsM' splitter (L.generalize L.mconcat) (evenlyM' innertrans) somefold)
+    where
+    innertrans = fmap ((,) ()) . transduceM (condenseM innerfold)
 
 ------------------------------------------------------------------------------
 
