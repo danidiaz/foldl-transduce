@@ -56,6 +56,8 @@ module Control.Foldl.Transduce (
     ,   _simplify
     ,   foldify
     ,   foldifyM
+    ,   condense
+    ,   condenseM
     ,   hoistTransducer
     ,   hoistFold
         -- * Re-exports
@@ -216,7 +218,7 @@ instance Monad m => Extend (TransducerM m i o) where
 {-| Apply a 'Transducer' to a 'Fold', discarding the return value of the
     'Transducer'.		
 
->>> L.fold (transduce (Transducer (\_ i -> ((),[i],[])) () (\_ -> ('r',[]))) L.list) [1..7]
+>>> L.fold (transduce (Transducer (\_ i -> ((),[i],[])) () (\_ -> ('r',[],[]))) L.list) [1..7]
 [1,2,3,4,5,6,7]
 -}
 transduce :: Transducer i o s -> Transduction i o 
@@ -225,7 +227,7 @@ transduce t = fmap snd . (transduce' t)
 {-| Generalized version of 'transduce' that preserves the return value of
     the 'Transducer'.
 
->>> L.fold (transduce' (Transducer (\_ i -> ((),[i],[])) () (\_ -> ('r',[]))) L.list) [1..7]
+>>> L.fold (transduce' (Transducer (\_ i -> ((),[i],[])) () (\_ -> ('r',[],[]))) L.list) [1..7]
 ('r',[1,2,3,4,5,6,7])
 -}
 transduce' :: Transducer i o s -> Transduction' i o s
