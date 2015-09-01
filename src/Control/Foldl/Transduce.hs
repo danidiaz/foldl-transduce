@@ -25,22 +25,18 @@ module Control.Foldl.Transduce (
     ,   transduceM
     ,   transduceM'
         -- * Working with groups
-    ,   groups
-    ,   groupsVarying
-    ,   groups'
-    ,   groupsVarying'
-    ,   groupsM
-    ,   groupsVaryingM
-    ,   groupsM'
-    ,   groupsVaryingM'
     ,   folds
-    ,   foldsVarying
-    ,   folds'
-    ,   foldsVarying'
     ,   foldsM
-    ,   foldsVaryingM
-    ,   foldsM'
-    ,   foldsVaryingM'
+    ,   groups
+    ,   evenly
+    ,   wrap    
+    ,   groups'
+    ,   evenly'
+    ,   groupsM
+    ,   evenlyM
+    ,   wrapM
+    ,   groupsM'
+    ,   evenlyM'
         -- * Transducers
     ,   take
     ,   takeWhile
@@ -77,7 +73,7 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Comonad
-import Control.Comonad.Cofree
+import Control.Comonad.Cofree 
 import Control.Foldl (Fold(..),FoldM(..))
 import qualified Control.Foldl as L
 import Control.Foldl.Transduce.Internal (Pair(..),Trio(..),Quartet(..),_1of3)
@@ -478,12 +474,12 @@ hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g 
 >>> L.fold (groups (chunksOf 2) (transduce (surround "<" ">")) L.list) "aabbccdd"
 "<aa><bb><cc><dd>"
 -}
-groups :: Transducer a b s -> Transduction b c -> Transduction a c 
-groups splitter transduction oldfold = 
-    let transduction' = fmap ((,) ()) . transduction
-        newfold = groups' splitter L.mconcat transduction' oldfold 
-    in 
-    fmap snd newfold
+--groups :: Transducer a b s -> Transduction b c -> Transduction a c 
+--groups splitter transduction oldfold = 
+--    let transduction' = fmap ((,) ()) . transduction
+--        newfold = groups' splitter L.mconcat transduction' oldfold 
+--    in 
+--    fmap snd newfold
 
 {-| Like 'groups', but applies a different transduction to each group. 		
 
@@ -496,18 +492,24 @@ groups splitter transduction oldfold =
     :}
 "0aa1bb2cc3dd"
 -}
-groupsVarying :: Transducer a b s 
-              -> Cofree Identity (ReifiedTransduction b c) -- ^ infinite list of transductions
-              -> Transduction a c 
-groupsVarying splitter transductions oldfold = 
+groups :: Transducer a b s 
+       -> Cofree Identity (ReifiedTransduction b c) -- ^ infinite list of transductions
+       -> Transduction a c 
+groups splitter transductions oldfold = 
     let transductions' = 
               fmap (\rt -> 
                         (ReifiedTransduction' (fmap (fmap ((,) ())) (getTransduction rt))))
             . hoistCofree (const . runIdentity)
             $ transductions 
-        newfold = groupsVarying' splitter L.mconcat transductions' oldfold 
+        newfold = groups' splitter L.mconcat transductions' oldfold 
     in 
     fmap snd newfold
+
+evenly :: Transduction b c -> Cofree Identity (ReifiedTransduction b c) 
+evenly = coiter Identity . ReifiedTransduction 
+
+wrap :: Transduction b c -> Cofree Identity (ReifiedTransduction b c) -> Cofree Identity (ReifiedTransduction b c) 
+wrap t s = ReifiedTransduction t :< Identity s
 
 {-| Generalized version of 'groups' that preserves the return value of the
     'Transducer'.
@@ -518,19 +520,19 @@ groupsVarying splitter transductions oldfold =
 >>> L.fold (groups' (chunksOf 2) L.list (\f -> transduce (surround "<" ">") (liftA2 (,) L.list f)) L.list) "aabbccdd"
 (((),["<aa>","<bb>","<cc>","<dd>"]),"<aa><bb><cc><dd>")
 -}
+--groups' :: Transducer a b s
+--        -> Fold u v -- ^ auxiliary 'Fold' that aggregates the @u@ values produced for each group
+--        -> Transduction' b c u -- ^ repeatedly applied for processing each group
+--        -> Transduction' a c (s,v) 
+--groups' splitter summarizer transduction somefold =
+--    let transductions = coiter const (ReifiedTransduction' transduction)
+--    in  groupsVarying' splitter summarizer transductions somefold
+
 groups' :: Transducer a b s
         -> Fold u v -- ^ auxiliary 'Fold' that aggregates the @u@ values produced for each group
-        -> Transduction' b c u -- ^ repeatedly applied for processing each group
+        -> Cofree ((->) u) (ReifiedTransduction' b c u) -- ^ a machine that eats @u@ values and spits transductions
         -> Transduction' a c (s,v) 
-groups' splitter summarizer transduction somefold =
-    let transductions = coiter const (ReifiedTransduction' transduction)
-    in  groupsVarying' splitter summarizer transductions somefold
-
-groupsVarying' :: Transducer a b s
-               -> Fold u v -- ^ auxiliary 'Fold' that aggregates the @u@ values produced for each group
-               -> Cofree ((->) u) (ReifiedTransduction' b c u) -- ^ a machine that eats @u@ values and spits transductions
-               -> Transduction' a c (s,v) 
-groupsVarying' (Transducer sstep sbegin sdone) somesummarizer (ReifiedTransduction' t0 :< somemachine) somefold =
+groups' (Transducer sstep sbegin sdone) somesummarizer (ReifiedTransduction' t0 :< somemachine) somefold =
     Fold step (Quartet sbegin somesummarizer (t0 (duplicated somefold)) somemachine) done 
       where 
         step (Quartet sstate summarizer innerfold machine) i =
@@ -564,51 +566,61 @@ groupsVarying' (Transducer sstep sbegin sdone) somesummarizer (ReifiedTransducti
                 (u,finalfold) = extract innerfold'
             in  ((s,L.fold summarizer [u]),extract finalfold)
 
+evenly' :: Transduction' b c u -> Cofree ((->) u) (ReifiedTransduction' b c u) 
+evenly' = coiter const . ReifiedTransduction' 
+
+
 {-| Monadic version of 'groups'.		
 
 -}
-groupsM :: Monad m => TransducerM m a b s -> TransductionM m b c -> TransductionM m a c
-groupsM splitter transduction oldfold = 
-    let transduction' = fmap ((,) ()) . transduction
-        newfold = 
-            groupsM' splitter (L.generalize L.mconcat) transduction' oldfold 
-    in 
-    fmap snd newfold
+--groupsM :: Monad m => TransducerM m a b s -> TransductionM m b c -> TransductionM m a c
+--groupsM splitter transduction oldfold = 
+--    let transduction' = fmap ((,) ()) . transduction
+--        newfold = 
+--            groupsM' splitter (L.generalize L.mconcat) transduction' oldfold 
+--    in 
+--    fmap snd newfold
 
-groupsVaryingM :: Monad m 
+groupsM :: Monad m 
                => TransducerM m a b s 
                -> Cofree Identity (ReifiedTransductionM m b c)
                -> TransductionM m a c
-groupsVaryingM splitter transductions oldfold = 
+groupsM splitter transductions oldfold = 
     let transductions' = 
               fmap (\rt -> 
                         ReifiedTransductionM'
                         (fmap (fmap ((,) ())) (getTransductionM rt)))
             . hoistCofree (const . runIdentity)
             $ transductions 
-        newfold = groupsVaryingM' splitter (L.generalize L.mconcat) transductions' oldfold 
+        newfold = groupsM' splitter (L.generalize L.mconcat) transductions' oldfold 
     in 
     fmap snd newfold
+
+evenlyM :: TransductionM m b c -> Cofree Identity (ReifiedTransductionM m b c) 
+evenlyM = coiter Identity . ReifiedTransductionM
+
+wrapM :: TransductionM m b c -> Cofree Identity (ReifiedTransductionM m b c) -> Cofree Identity (ReifiedTransductionM m b c) 
+wrapM t s = ReifiedTransductionM t :< Identity s
 
 {-| Monadic version of 'groups''.		
 
 -}
-groupsM' :: Monad m 
-         => TransducerM m a b s -- ^
-         -> FoldM m u v 
-         -> TransductionM' m b c u 
-         -> TransductionM' m a c (s,v) 
-groupsM' splitter summarizer transduction somefold =
-    let transductions = coiter const (ReifiedTransductionM' transduction)
-    in  groupsVaryingM' splitter summarizer transductions somefold
+--groupsM' :: Monad m 
+--         => TransducerM m a b s -- ^
+--         -> FoldM m u v 
+--         -> TransductionM' m b c u 
+--         -> TransductionM' m a c (s,v) 
+--groupsM' splitter summarizer transduction somefold =
+--    let transductions = coiter const (ReifiedTransductionM' transduction)
+--    in  groupsVaryingM' splitter summarizer transductions somefold
 
-groupsVaryingM' :: Monad m 
+groupsM' :: Monad m 
                 => TransducerM m a b s 
                 -> FoldM m u v 
                 -> Cofree ((->) u) (ReifiedTransductionM' m b c u) -- ^ a machine that eats @u@ values and spits transductions
                 -> TransductionM' m a c (s,v) 
 
-groupsVaryingM' (TransducerM sstep sbegin sdone) somesummarizer (ReifiedTransductionM' t0 :< somemachine) somefold =
+groupsM' (TransducerM sstep sbegin sdone) somesummarizer (ReifiedTransductionM' t0 :< somemachine) somefold =
     FoldM step (sbegin >>= \x -> return (Quartet x somesummarizer (t0 (duplicated somefold)) somemachine)) done        
     where
         step (Quartet sstate summarizer innerfold machine) i = do
@@ -640,6 +652,10 @@ groupsVaryingM' (TransducerM sstep sbegin sdone) somesummarizer (ReifiedTransduc
             r <- L.foldM finalfold []
             return ((s,v),r)
 
+
+evenlyM' :: TransductionM' m b c u -> Cofree ((->) u) (ReifiedTransductionM' m b c u) 
+evenlyM' = coiter const . ReifiedTransductionM'
+
 {-| Summarizes each of the groups demarcated by the 'Transducer' using a
     'Fold'. 
     
@@ -649,69 +665,69 @@ groupsVaryingM' (TransducerM sstep sbegin sdone) somesummarizer (ReifiedTransduc
 [6,15,7]
 -}
 folds :: Transducer a b s -> Fold b c -> Transduction a c
-folds splitter f = groups splitter (transduce (condense f))
+folds splitter f = groups splitter (evenly (transduce (condense f)))
 
-foldsVarying :: Transducer a b s 
-             -> Cofree Identity (Fold b c) -- ^ infinite list of 'Fold's.
-             -> Transduction a c
-foldsVarying splitter foldlist = groupsVarying splitter transducers
-    where
-    foldToTrans f = ReifiedTransduction (transduce (condense f))
-    transducers = fmap foldToTrans foldlist 
+--foldsVarying :: Transducer a b s 
+--             -> Cofree Identity (Fold b c) -- ^ infinite list of 'Fold's.
+--             -> Transduction a c
+--foldsVarying splitter foldlist = groupsVarying splitter transducers
+--    where
+--    foldToTrans f = ReifiedTransduction (transduce (condense f))
+--    transducers = fmap foldToTrans foldlist 
 
 {-| Like 'folds', but preserves the return value of the 'Transducer'.
 
 >>> L.fold (folds' (chunksOf 3) L.sum L.list) [1..7]
 ((),[6,15,7])
 -}
-folds' :: Transducer a b s -> Fold b c -> Transduction' a c s
-folds' splitter innerfold somefold = 
-    fmap (bimap fst id) (groups' splitter L.mconcat innertrans somefold)
-    where
-    innertrans = fmap ((,) ()) . transduce (condense innerfold)
-
-foldsVarying' :: Transducer a b s 
-              -> Cofree ((->) c) (Fold b c)
-              -> Transduction' a c s
-foldsVarying' splitter foldlist somefold = 
-    fmap fst $ groupsVarying' splitter somefold transducers (pure ())
-    where
-    foldToTrans f = ReifiedTransduction' (transduce' (condense f))
-    transducers = fmap foldToTrans foldlist 
+--folds' :: Transducer a b s -> Fold b c -> Transduction' a c s
+--folds' splitter innerfold somefold = 
+--    fmap (bimap fst id) (groups' splitter L.mconcat innertrans somefold)
+--    where
+--    innertrans = fmap ((,) ()) . transduce (condense innerfold)
+--
+--foldsVarying' :: Transducer a b s 
+--              -> Cofree ((->) c) (Fold b c)
+--              -> Transduction' a c s
+--foldsVarying' splitter foldlist somefold = 
+--    fmap fst $ groupsVarying' splitter somefold transducers (pure ())
+--    where
+--    foldToTrans f = ReifiedTransduction' (transduce' (condense f))
+--    transducers = fmap foldToTrans foldlist 
 
 {-| Monadic version of 'folds'.		
 
 -}
 foldsM :: (Applicative m, Monad m) => TransducerM m a b s -> FoldM m b c -> TransductionM m a c
-foldsM splitter f = groupsM splitter (transduceM (condenseM f))
+foldsM splitter f = groupsM splitter (evenlyM (transduceM (condenseM f)))
 
-foldsVaryingM :: (Applicative m, Monad m) 
-              => TransducerM m a b s 
-              -> Cofree Identity (FoldM m b c) -- ^ infinite list of 'FoldM's.
-              -> TransductionM m a c
-foldsVaryingM splitter foldlist = groupsVaryingM splitter transducers
-    where
-    foldToTrans f = ReifiedTransductionM (transduceM (condenseM f))
-    transducers = fmap foldToTrans foldlist 
+--foldsVaryingM :: (Applicative m, Monad m) 
+--              => TransducerM m a b s 
+--              -> Cofree Identity (FoldM m b c) -- ^ infinite list of 'FoldM's.
+--              -> TransductionM m a c
+--foldsVaryingM splitter foldlist = groupsVaryingM splitter transducers
+--    where
+--    foldToTrans f = ReifiedTransductionM (transduceM (condenseM f))
+--    transducers = fmap foldToTrans foldlist 
 
-foldsVaryingM' :: (Applicative m, Monad m)
-               => TransducerM m a b s 
-               -> Cofree ((->) c) (FoldM m b c)
-               -> TransductionM' m a c s
-foldsVaryingM' splitter foldlist somefold = 
-    fmap fst $ groupsVaryingM' splitter somefold transducers (pure ())
-    where
-    foldToTrans f = ReifiedTransductionM' (transduceM' (condenseM f))
-    transducers = fmap foldToTrans foldlist 
-
-{-| Monadic version of 'folds''.		
-
--}
-foldsM' :: (Applicative m,Monad m) => TransducerM m a b s -> FoldM m b c -> TransductionM' m a c s
-foldsM' splitter innerfold somefold = 
-    fmap (bimap fst id) (groupsM' splitter (L.generalize L.mconcat) innertrans somefold)
-    where
-    innertrans = fmap ((,) ()) . transduceM (condenseM innerfold)
+--foldsVaryingM' :: (Applicative m, Monad m)
+--               => TransducerM m a b s 
+--               -> Cofree ((->) c) (FoldM m b c)
+--               -> TransductionM' m a c s
+--foldsVaryingM' splitter foldlist somefold = 
+--    fmap fst $ groupsVaryingM' splitter somefold transducers (pure ())
+--    where
+--    foldToTrans f = ReifiedTransductionM' (transduceM' (condenseM f))
+--    transducers = fmap foldToTrans foldlist 
+--
+--{-| Monadic version of 'folds''.		
+--
+---}
+--foldsM' :: (Applicative m,Monad m) => TransducerM m a b s -> FoldM m b c -> TransductionM' m a c s
+--foldsM' splitter innerfold somefold = 
+--    fmap (bimap fst id) (groupsM' splitter (L.generalize L.mconcat) innertrans somefold)
+--    where
+--    innertrans = fmap ((,) ()) . transduceM (condenseM innerfold)
 
 ------------------------------------------------------------------------------
 
