@@ -551,11 +551,16 @@ groupsVarying' (Transducer sstep sbegin sdone) somesummarizer (ReifiedTransducti
             let (u,nextfold) = fdone fstate
                 ReifiedTransduction' t1 :< nextmachine = machine u
             in  (u,t1 (duplicated nextfold),nextmachine)
-        done (Quartet sstate summarizer (Fold fstep fstate fdone) _) = 
+        done (Quartet sstate summarizer innerfold machine) = 
             let 
-                (s,bss) = sdone sstate
-                (u,extract -> x) = fdone (foldl' fstep fstate bss)
-            in  ((s,L.fold summarizer [u]),x)
+                (s,oldSplit,newSplits) = sdone sstate
+                (_,innerfold',_) = 
+                   foldl' 
+                   step'
+                   (summarizer,feed innerfold oldSplit,machine) 
+                   newSplits
+                (u,finalfold) = extract innerfold'
+            in  ((s,L.fold summarizer [u]),extract finalfold)
 
 {-| Monadic version of 'groups'.		
 
@@ -624,9 +629,11 @@ groupsVaryingM' (TransducerM sstep sbegin sdone) somesummarizer (ReifiedTransduc
                ReifiedTransductionM' t1 :< nextmachine = machine u
            return (u,t1 (duplicated nextfold),nextmachine)
 
-        done (Quartet sstate summarizer (FoldM fstep fstate fdone) _) = do
-            (s,bss) <- sdone sstate
-            (u,finalfold) <- fdone =<< flip (foldlM fstep) bss =<< fstate
+        done (Quartet sstate summarizer innerfold machine) = do
+            (s,oldSplit,newSplits) <- sdone sstate
+            innerfold' <- feed innerfold oldSplit
+            (summarizer',innerfold'',machine') <- foldlM step' (summarizer,innerfold',machine) newSplits
+            (u,finalfold) <- L.foldM innerfold'' []
             v <- L.foldM summarizer [u]
             r <- L.foldM finalfold []
             return ((s,v),r)
@@ -720,7 +727,7 @@ chunksOf groupSize = Transducer step groupSize done
     where
         step 0 a = (pred groupSize, [], [[a]])
         step i a = (pred i, [a], [])
-        done _ = ((),[])
+        done _ = ((),[],[])
 
 ------------------------------------------------------------------------------
 

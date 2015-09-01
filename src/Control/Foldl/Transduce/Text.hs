@@ -63,8 +63,8 @@ decoder _step onLeftovers = L.Transducer step (Pair mempty _step) done
         (Pair leftovers next',[txt],[])
     done (Pair leftovers _) = 
         if B.null leftovers
-            then ((), [])
-            else ((), foldMap (pure . T.singleton) onLeftovers')
+            then ((), [], [])
+            else ((), foldMap (pure . T.singleton) onLeftovers',[])
     onLeftovers' = onLeftovers "leftovers" Nothing
 
 {-| Builds a UTF8-decoding 'Transducer'. Takes an error handler from
@@ -124,14 +124,14 @@ decoderE next = L.TransducerM step (return (Pair mempty next')) done
                     return (Pair leftovers next2,[txt],[])
         done (Pair leftovers _) = do
             if B.null leftovers
-                then return ((), [])
+                then return ((), [], [])
                 else do
                     emc <- liftIO . try . evaluate $ onLeftovers'
                     case emc of
                         Left ue -> do
                             throwE ue
                         Right mc -> do
-                            return ((), foldMap (return . T.singleton) mc)
+                            return ((), foldMap (return . T.singleton) mc,[])
         next' = next T.strictDecode  
         onLeftovers' = T.strictDecode "leftovers" Nothing
 
@@ -192,7 +192,7 @@ stripEnd = L.Transducer step [] done
                 then (i:txts, [], [])
                 else ([i], reverse txts, [])
         done txts = case reverse txts of
-            txt : _ -> ((), [T.stripEnd txt])
+            txt : _ -> ((), [T.stripEnd txt], [])
             _ -> ((), [], [])
 
 {-| Splits a stream of text into lines, removing the newlines.
