@@ -73,6 +73,7 @@ import Prelude hiding (take,drop,takeWhile,dropWhile,unfold)
 
 import Data.Bifunctor
 import Data.Monoid
+import qualified Data.Sequence as S
 import Data.Functor.Identity
 import Data.Functor.Extend
 import Data.Foldable (Foldable,foldlM,foldl',toList)
@@ -723,6 +724,17 @@ splitHeadWhen predicate =
         step SplitHeadConditionEncountered i = 
                (SplitHeadConditionEncountered,[i],[])
         done = mempty
+
+splitTail :: Int -> Transducer a a (S.Seq a) 
+splitTail howmany =  
+    Transducer step mempty done 
+    where
+        step s i
+            | S.length s < howmany = (s S.|> i, [i], [])
+            | S.length s == howmany = undefined
+            | otherwise = undefined
+
+        done = undefined
 
 {-| Ignore the firs @n@ inputs, pass all subsequent inputs to the 'Fold'.		
 

@@ -32,7 +32,8 @@ Library
         semigroupoids >= 5.0               ,
         foldl         >= 1.1      && < 2   ,
         comonad       == 4.*               ,
-        free          == 4.*
+        free          == 4.*               ,
+        containers    == 0.5        
     Exposed-Modules:
         Control.Foldl.Transduce,
         Control.Foldl.Transduce.Text,
