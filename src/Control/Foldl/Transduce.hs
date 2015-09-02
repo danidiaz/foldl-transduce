@@ -45,15 +45,13 @@ module Control.Foldl.Transduce (
     ,   groupsM'
     ,   evenlyM'
         -- * Transducers
-    ,   take
-    ,   takeWhile
-    ,   drop
-    ,   dropWhile
     ,   dropAll
     ,   surround
     ,   surroundIO
         -- * Splitters
     ,   chunksOf
+    ,   splitHead
+    ,   splitHeadWhen
         -- * Transducer utilities
     ,   _generalize
     ,   _simplify
@@ -272,78 +270,6 @@ transduceM' (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
                 return $! (,) wr fr
 
 ------------------------------------------------------------------------------
-
-{-| Pass the first @n@ inputs to the 'Fold', and ignore the rest.		
-
->>> L.fold (transduce (take 2) L.list) [1..5]
-[1,2]
-
->>> L.fold (transduce (take 0) L.list) [1..5]
-[]
--}
-take :: Int -> Transducer a a ()
-take howmany = 
-    Transducer step howmany done 
-    where
-        step howmanypending i 
-            | howmanypending == 0 = 
-                (0,[],[])
-            | otherwise = 
-                (pred howmanypending,[i],[]) 
-        done = const ((),[],[])
-
-{-| 		
-
->>> L.fold (transduce (takeWhile (<3)) L.list) [1..5]
-[1,2]
--}
-takeWhile :: (a -> Bool) -> Transducer a a ()
-takeWhile predicate = 
-    Transducer step False done 
-    where
-        step False i = 
-            if predicate i 
-               then (False,[i],[])
-               else (True,[],[])
-        step True _ = 
-               (True,[],[])
-        done = const ((),[],[])
-
-{-| Ignore the firs @n@ inputs, pass all subsequent inputs to the 'Fold'.		
-
->>> L.fold (transduce (drop 2) L.list) [1..5]
-[3,4,5]
-
->>> L.fold (transduce (drop 0) L.list) [1..5]
-[1,2,3,4,5]
--}
-drop :: Int -> Transducer a a ()
-drop howmany = 
-    Transducer step howmany done 
-    where
-        step howmanypending i 
-            | howmanypending == 0 = 
-                (0,[i],[]) 
-            | otherwise = 
-                (pred howmanypending,[],[])
-        done = const ((),[],[])
-
-{-| 		
-
->>> L.fold (transduce (dropWhile (<3)) L.list) [1..5]
-[3,4,5]
--}
-dropWhile :: (a -> Bool) -> Transducer a a ()
-dropWhile predicate = 
-    Transducer step False done 
-    where
-        step False i = 
-            if predicate i 
-               then (False,[],[])
-               else (True,[i],[])
-        step True i = 
-               (True,[i],[])
-        done = const ((),[],[])
 
 {-| Polymorphic in both inputs and outputs.		
 
@@ -755,6 +681,63 @@ chunksOf groupSize = Transducer step groupSize done
         step 0 a = (pred groupSize, [], [[a]])
         step i a = (pred i, [a], [])
         done _ = ((),[],[])
+
+{-| Pass the first @n@ inputs to the 'Fold', and ignore the rest.		
+
+>>> L.fold (transduce (take 2) L.list) [1..5]
+[1,2]
+
+>>> L.fold (transduce (take 0) L.list) [1..5]
+[]
+-}
+splitHead :: Int -> Transducer a a ()
+splitHead howmany = 
+    Transducer step (Just howmany) done 
+    where
+        step Nothing i =
+            (Nothing,[i],[])
+        step (Just howmanypending) i 
+            | howmanypending == 0 = 
+                (Nothing,[],[[i]])
+            | otherwise = 
+                (Just (pred howmanypending),[i],[]) 
+        done = mempty
+
+data SplitHeadWhenState = 
+      SplitHeadConditionEncountered 
+    | SplitHeadConditionPending
+
+{-| 		
+
+>>> L.fold (transduce (takeWhile (<3)) L.list) [1..5]
+[1,2]
+-}
+splitHeadWhen :: (a -> Bool) -> Transducer a a ()
+splitHeadWhen predicate = 
+    Transducer step SplitHeadConditionPending done 
+    where
+        step SplitHeadConditionPending i = 
+            if predicate i 
+               then (SplitHeadConditionEncountered,[],[[i]])
+               else (SplitHeadConditionPending,[i],[])
+        step SplitHeadConditionEncountered i = 
+               (SplitHeadConditionEncountered,[i],[])
+        done = mempty
+
+{-| Ignore the firs @n@ inputs, pass all subsequent inputs to the 'Fold'.		
+
+>>> L.fold (transduce (drop 2) L.list) [1..5]
+[3,4,5]
+
+>>> L.fold (transduce (drop 0) L.list) [1..5]
+[1,2,3,4,5]
+-}
+
+{-| 		
+
+>>> L.fold (transduce (dropWhile (<3)) L.list) [1..5]
+[3,4,5]
+-}
 
 ------------------------------------------------------------------------------
 
