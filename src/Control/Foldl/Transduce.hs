@@ -451,7 +451,8 @@ hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g 
     :}
 "0aa1bb2cc3dd"
 -}
-groups :: Transducer a b s 
+groups :: ToTransducer t 
+       => t a b s 
        -> Cofree Identity (ReifiedTransduction b c) -- ^ infinite list of transductions
        -> Transduction a c 
 groups splitter transductions oldfold = 
@@ -487,11 +488,12 @@ wrap t s = ReifiedTransduction t :< Identity s
 --    let transductions = coiter const (ReifiedTransduction' transduction)
 --    in  groupsVarying' splitter summarizer transductions somefold
 
-groups' :: Transducer a b s
+groups' :: ToTransducer t
+        => t a b s
         -> Fold u v -- ^ auxiliary 'Fold' that aggregates the @u@ values produced for each group
         -> Cofree ((->) u) (ReifiedTransduction' b c u) -- ^ a machine that eats @u@ values and spits transductions
         -> Transduction' a c (s,v) 
-groups' (Transducer sstep sbegin sdone) somesummarizer (ReifiedTransduction' t0 :< somemachine) somefold =
+groups' (toTransducer -> Transducer sstep sbegin sdone) somesummarizer (ReifiedTransduction' t0 :< somemachine) somefold =
     Fold step (Quartet sbegin somesummarizer (t0 (duplicated somefold)) somemachine) done 
       where 
         step (Quartet sstate summarizer innerfold machine) i =
@@ -540,8 +542,8 @@ evenly' = coiter const . ReifiedTransduction'
 --    in 
 --    fmap snd newfold
 
-groupsM :: Monad m 
-               => TransducerM m a b s 
+groupsM :: (Monad m, ToTransducerM m t)
+               => t a b s 
                -> Cofree Identity (ReifiedTransductionM m b c)
                -> TransductionM m a c
 groupsM splitter transductions oldfold = 
@@ -573,13 +575,13 @@ wrapM t s = ReifiedTransductionM t :< Identity s
 --    let transductions = coiter const (ReifiedTransductionM' transduction)
 --    in  groupsVaryingM' splitter summarizer transductions somefold
 
-groupsM' :: Monad m 
-                => TransducerM m a b s 
-                -> FoldM m u v 
-                -> Cofree ((->) u) (ReifiedTransductionM' m b c u) -- ^ a machine that eats @u@ values and spits transductions
-                -> TransductionM' m a c (s,v) 
+groupsM' :: (Monad m, ToTransducerM m t) 
+         => t a b s 
+         -> FoldM m u v 
+         -> Cofree ((->) u) (ReifiedTransductionM' m b c u) -- ^ a machine that eats @u@ values and spits transductions
+         -> TransductionM' m a c (s,v) 
 
-groupsM' (TransducerM sstep sbegin sdone) somesummarizer (ReifiedTransductionM' t0 :< somemachine) somefold =
+groupsM' (toTransducerM -> TransducerM sstep sbegin sdone) somesummarizer (ReifiedTransductionM' t0 :< somemachine) somefold =
     FoldM step (sbegin >>= \x -> return (Quartet x somesummarizer (t0 (duplicated somefold)) somemachine)) done        
     where
         step (Quartet sstate summarizer innerfold machine) i = do
@@ -623,7 +625,7 @@ evenlyM' = coiter const . ReifiedTransductionM'
 >>> L.fold (folds (chunksOf 3) L.sum L.list) [1..7]
 [6,15,7]
 -}
-folds :: Transducer a b s -> Fold b c -> Transduction a c
+folds :: ToTransducer t => t a b s -> Fold b c -> Transduction a c
 folds splitter f = groups splitter (evenly (transduce (condense f)))
 
 --foldsVarying :: Transducer a b s 
@@ -639,7 +641,7 @@ folds splitter f = groups splitter (evenly (transduce (condense f)))
 >>> L.fold (folds' (chunksOf 3) L.sum L.list) [1..7]
 ((),[6,15,7])
 -}
-folds' :: Transducer a b s -> Fold b c -> Transduction' a c s
+folds' :: ToTransducer t => t a b s -> Fold b c -> Transduction' a c s
 folds' splitter innerfold somefold = 
     fmap (bimap fst id) (groups' splitter L.mconcat (evenly' innertrans) somefold)
     where
@@ -657,7 +659,7 @@ folds' splitter innerfold somefold =
 {-| Monadic version of 'folds'.		
 
 -}
-foldsM :: (Applicative m, Monad m) => TransducerM m a b s -> FoldM m b c -> TransductionM m a c
+foldsM :: (Applicative m, Monad m, ToTransducerM m t) => t a b s -> FoldM m b c -> TransductionM m a c
 foldsM splitter f = groupsM splitter (evenlyM (transduceM (condenseM f)))
 
 --foldsVaryingM :: (Applicative m, Monad m) 
@@ -682,7 +684,7 @@ foldsM splitter f = groupsM splitter (evenlyM (transduceM (condenseM f)))
 --{-| Monadic version of 'folds''.		
 --
 ---}
-foldsM' :: (Applicative m,Monad m) => TransducerM m a b s -> FoldM m b c -> TransductionM' m a c s
+foldsM' :: (Applicative m,Monad m, ToTransducerM m t) => t a b s -> FoldM m b c -> TransductionM' m a c s
 foldsM' splitter innerfold somefold = 
     fmap (bimap fst id) (groupsM' splitter (L.generalize L.mconcat) (evenlyM' innertrans) somefold)
     where
