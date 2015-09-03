@@ -3,9 +3,9 @@
 - Transducers can now delimit segments in the done function as well.
   This was required for transducers like surround to work as splitters.
 - strengthened the constraints on the surround function to traversable
-- Added dependency on free
-- Added groupVarying* and foldVarying* functions
-- Added dropAll
+- Added dependency on free and monoid-sublasses
+- Added group functions that allow treating each group differently.
+- Added ignore, splitAt, splitWhen, splitLast
 
 # 0.2.1.0
 

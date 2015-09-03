@@ -29,8 +29,5 @@ Grouping fold-side has limitations as well:
 - You can't perform bracketing operations like "withFile" that span the folding
   of an entire group. pipes-group allows them.
 
-- There doesn't seem to be a way to just take the first N groups in a stream
-  and afterwards rejoin them.
-
-- You have more flexibility in pipes-group to decide how to fold a group based
-  on previous results.
+- You have more flexibility in pipes-group to decide how to delimit and fold
+  the next group based on previous results.

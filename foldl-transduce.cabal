@@ -1,5 +1,5 @@
 Name: foldl-transduce
-Version: 0.2.3.0
+Version: 0.3.0.0
 Cabal-Version: >=1.8.0.2
 Build-Type: Simple
 License: BSD3
@@ -32,8 +32,8 @@ Library
         semigroupoids >= 5.0               ,
         foldl         >= 1.1      && < 2   ,
         comonad       == 4.*               ,
-        free          == 4.*               ,
-        containers    == 0.5        
+        free          == 4.*               ,         
+        monoid-subclasses == 0.4.*         
     Exposed-Modules:
         Control.Foldl.Transduce,
         Control.Foldl.Transduce.Text,
