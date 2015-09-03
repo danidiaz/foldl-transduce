@@ -37,28 +37,27 @@ module Control.Foldl.Transduce (
         -- * Other group operations
     ,   groups
     ,   evenly
-    ,   wrap    
+    ,   bisect    
         --
     ,   groups'
     ,   evenly'
         --
     ,   groupsM
     ,   evenlyM
-    ,   wrapM
+    ,   bisectM
         --
     ,   groupsM'
     ,   evenlyM'
         -- * Transducers
-    ,   dropAll
+    ,   ignore
     ,   surround
     ,   surroundIO
         -- * Splitters
     ,   chunksOf
-    ,   splitHead
-    ,   splitHeadWhen
+    ,   splitAt
+    ,   splitWhen
+    ,   splitLast
         -- * Transducer utilities
-    ,   _generalize
-    ,   _simplify
     ,   foldify
     ,   foldifyM
     ,   condense
@@ -73,11 +72,10 @@ module Control.Foldl.Transduce (
     ,   module Control.Comonad.Cofree
     ) where
 
-import Prelude hiding (take,drop,takeWhile,dropWhile,unfold)
+import Prelude hiding (take,drop,splitAt,dropWhile,unfold)
 
 import Data.Bifunctor
 import Data.Monoid
-import qualified Data.Sequence as S
 import Data.Functor.Identity
 import Data.Functor.Extend
 import Data.Foldable (Foldable,foldlM,foldl',toList)
@@ -298,8 +296,8 @@ transduceM' (toTransducerM -> TransducerM wstep wstate wdone) (FoldM fstep fstat
 {-| Polymorphic in both inputs and outputs.		
 
 -}
-dropAll :: Transducer a b ()
-dropAll = 
+ignore :: Transducer a b ()
+ignore = 
     Transducer step () done 
     where
         step _ _ = 
@@ -468,8 +466,12 @@ groups splitter transductions oldfold =
 evenly :: Transduction b c -> Cofree Identity (ReifiedTransduction b c) 
 evenly = coiter Identity . ReifiedTransduction 
 
-wrap :: Transduction b c -> Cofree Identity (ReifiedTransduction b c) -> Cofree Identity (ReifiedTransduction b c) 
-wrap t s = ReifiedTransduction t :< Identity s
+bisect :: ToTransducer t 
+       => t a b s 
+       -> Transduction b c -- ^ head
+       -> Transduction b c 
+       -> Transduction a c 
+bisect t t0 t1 = groups t (ReifiedTransduction t0 :< Identity (evenly t1))
 
 {-| Generalized version of 'groups' that preserves the return value of the
     'Transducer'.
@@ -543,7 +545,7 @@ evenly' = coiter const . ReifiedTransduction'
 --    fmap snd newfold
 
 groupsM :: (Monad m, ToTransducerM m t)
-               => t a b s 
+               => t a b s -- ^
                -> Cofree Identity (ReifiedTransductionM m b c)
                -> TransductionM m a c
 groupsM splitter transductions oldfold = 
@@ -560,8 +562,16 @@ groupsM splitter transductions oldfold =
 evenlyM :: TransductionM m b c -> Cofree Identity (ReifiedTransductionM m b c) 
 evenlyM = coiter Identity . ReifiedTransductionM
 
-wrapM :: TransductionM m b c -> Cofree Identity (ReifiedTransductionM m b c) -> Cofree Identity (ReifiedTransductionM m b c) 
-wrapM t s = ReifiedTransductionM t :< Identity s
+
+bisectM :: ToTransducerM m t 
+        => t a b s 
+        -> TransductionM m b c -- ^ head
+        -> TransductionM m b c 
+        -> TransductionM m a c 
+bisectM t t0 t1 = groupsM t (ReifiedTransductionM t0 :< Identity (evenlyM t1))
+
+--wrapM :: TransductionM m b c -> Cofree Identity (ReifiedTransductionM m b c) -> Cofree Identity (ReifiedTransductionM m b c) 
+--wrapM t s = ReifiedTransductionM t :< Identity s
 
 {-| Monadic version of 'groups''.		
 
@@ -716,8 +726,8 @@ chunksOf groupSize = Transducer step groupSize done
 >>> L.fold (transduce (take 0) L.list) [1..5]
 []
 -}
-splitHead :: Int -> Transducer a a ()
-splitHead howmany = 
+splitAt :: Int -> Transducer a a ()
+splitAt howmany = 
     Transducer step (Just howmany) done 
     where
         step Nothing i =
@@ -729,37 +739,38 @@ splitHead howmany =
                 (Just (pred howmanypending),[i],[]) 
         done = mempty
 
-data SplitHeadWhenState = 
-      SplitHeadConditionEncountered 
-    | SplitHeadConditionPending
+data SplitWhenWhenState = 
+      SplitWhenConditionEncountered 
+    | SplitWhenConditionPending
 
 {-| 		
 
 >>> L.fold (transduce (takeWhile (<3)) L.list) [1..5]
 [1,2]
 -}
-splitHeadWhen :: (a -> Bool) -> Transducer a a ()
-splitHeadWhen predicate = 
-    Transducer step SplitHeadConditionPending done 
+splitWhen :: (a -> Bool) -> Transducer a a ()
+splitWhen predicate = 
+    Transducer step SplitWhenConditionPending done 
     where
-        step SplitHeadConditionPending i = 
+        step SplitWhenConditionPending i = 
             if predicate i 
-               then (SplitHeadConditionEncountered,[],[[i]])
-               else (SplitHeadConditionPending,[i],[])
-        step SplitHeadConditionEncountered i = 
-               (SplitHeadConditionEncountered,[i],[])
+               then (SplitWhenConditionEncountered,[],[[i]])
+               else (SplitWhenConditionPending,[i],[])
+        step SplitWhenConditionEncountered i = 
+               (SplitWhenConditionEncountered,[i],[])
         done = mempty
 
-splitTail :: Int -> Transducer a a (S.Seq a) 
-splitTail howmany =  
-    Transducer step mempty done 
+splitLast :: Transducer a a (Maybe a)
+splitLast =
+    Transducer step Nothing done
     where
-        step s i
-            | S.length s < howmany = (s S.|> i, [i], [])
-            | S.length s == howmany = undefined
-            | otherwise = undefined
-
-        done = undefined
+        step Nothing i = 
+            (Just i,[],[])
+        step (Just oldi) i = 
+            (Just i,[oldi],[])
+        done Nothing = 
+            (Nothing,[],[])
+        done (Just lasti) = (Just lasti, [], [[lasti]])
 
 {-| Ignore the firs @n@ inputs, pass all subsequent inputs to the 'Fold'.		
 
