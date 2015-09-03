@@ -1,5 +1,7 @@
 {-# LANGUAGE ExistentialQuantification, RankNTypes #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE CPP #-}
 
 -- |
@@ -9,17 +11,19 @@
 
 module Control.Foldl.Transduce (
         -- * Transducer types
-        Transducer(..)
-    ,   Transduction 
+        Transduction 
     ,   ReifiedTransduction (..)
     ,   Transduction' 
     ,   ReifiedTransduction' (..)
+    ,   Transducer(..)
+    ,   ToTransducer(..)
         -- ** Monadic transducer types
-    ,   TransducerM(..)
     ,   TransductionM
     ,   ReifiedTransductionM (..)
     ,   TransductionM'
     ,   ReifiedTransductionM' (..)
+    ,   TransducerM(..)
+    ,   ToTransducerM(..)
         -- * Applying transducers
     ,   transduce
     ,   transduce'
@@ -181,6 +185,15 @@ instance Bifunctor (Transducer i) where
             ((\(x,xs,xss) -> (x,map f xs, map (map f) xss)) . done) 
     second f w = fmap f w
 
+class ToTransducer t where
+    toTransducer :: t i o r -> Transducer i o r
+
+instance ToTransducer Transducer where
+    toTransducer = id
+
+instance ToTransducer (TransducerM Identity) where
+    toTransducer = _simplify
+
 {-| Like 'Transduction', but works on monadic 'Fold's.		
 
 -}
@@ -197,6 +210,7 @@ newtype ReifiedTransductionM' m a b r = ReifiedTransductionM' { getTransductionM
 -}
 data TransducerM m i o r
      = forall x. TransducerM (x -> i -> m (x,[o],[[o]])) (m x) (x -> m (r,[o],[[o]]))
+
 
 instance Monad m => Functor (TransducerM m i o) where
     fmap f (TransducerM step begin done) = TransducerM step begin done'
@@ -219,13 +233,22 @@ instance Monad m => Extend (TransducerM m i o) where
         TransducerM step begin (\x -> return $! (TransducerM step (return x) done,[],[]))
     {-# INLINABLE duplicated #-}
 
+class ToTransducerM m t where
+    toTransducerM :: t i o r -> TransducerM m i o r
+
+instance ToTransducerM m (TransducerM m) where
+    toTransducerM = id
+
+instance Monad m => ToTransducerM m Transducer where
+    toTransducerM = _generalize
+
 {-| Apply a 'Transducer' to a 'Fold', discarding the return value of the
     'Transducer'.		
 
 >>> L.fold (transduce (Transducer (\_ i -> ((),[i],[])) () (\_ -> ('r',[],[]))) L.list) [1..7]
 [1,2,3,4,5,6,7]
 -}
-transduce :: Transducer i o s -> Transduction i o 
+transduce :: ToTransducer t => t i o s -> Transduction i o 
 transduce t = fmap snd . (transduce' t)
 
 {-| Generalized version of 'transduce' that preserves the return value of
@@ -234,8 +257,8 @@ transduce t = fmap snd . (transduce' t)
 >>> L.fold (transduce' (Transducer (\_ i -> ((),[i],[])) () (\_ -> ('r',[],[]))) L.list) [1..7]
 ('r',[1,2,3,4,5,6,7])
 -}
-transduce' :: Transducer i o s -> Transduction' i o s
-transduce' (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
+transduce' :: ToTransducer t => t i o s -> Transduction' i o s
+transduce' (toTransducer -> Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
     Fold step (Pair wstate fstate) done 
         where
             step (Pair ws fs) i = 
@@ -251,14 +274,14 @@ transduce' (Transducer wstep wstate wdone) (Fold fstep fstate fdone) =
 {-| Like 'transduce', but works on monadic 'Fold's.		
 
 -}
-transduceM :: Monad m => TransducerM m i o s -> TransductionM m i o 
+transduceM :: (Monad m, ToTransducerM m t)  => t i o s -> TransductionM m i o 
 transduceM t = fmap snd . (transduceM' t)
 
 {-| Like 'transduce'', but works on monadic 'Fold's.		
 
 -}
-transduceM' :: Monad m => TransducerM m i o s -> TransductionM' m i o s
-transduceM' (TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
+transduceM' :: (Monad m, ToTransducerM m t)  => t i o s -> TransductionM' m i o s
+transduceM' (toTransducerM -> TransducerM wstep wstate wdone) (FoldM fstep fstate fdone) =
     FoldM step (liftM2 Pair wstate fstate) done 
         where
             step (Pair ws fs) i = do
