@@ -801,12 +801,21 @@ chunkedStripPrefix :: (CM.LeftGCDMonoid i,SFM.StableFactorialMonoid i,Traversabl
 chunkedStripPrefix (filter (not . NM.null) . toList -> chunks) = 
     TransducerM step (return chunks) done
     where
-        step [] i = return ([],[i],[])
-        step xss@(x:xs) i 
-            | NM.null i = return (xss,[],[])
-            | otherwise = undefined
-        done [] = return mempty
-        done (_:_) = throwE () 
+        step []     i = 
+            return ([],[i],[])
+        step (x:xs) i = 
+            let (prefix',i',x') = CM.stripCommonPrefix i x 
+            in 
+            if NM.null prefix'
+                then throwE ()
+                else 
+                    if NM.null x' 
+                       then step xs i'
+                       else step (x':xs) i'
+        done [] = 
+            return mempty
+        done (_:_) = 
+            throwE () 
 
 {-| Ignore the firs @n@ inputs, pass all subsequent inputs to the 'Fold'.		
 
