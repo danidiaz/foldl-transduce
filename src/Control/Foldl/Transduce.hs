@@ -58,6 +58,7 @@ module Control.Foldl.Transduce (
     ,   chunkedSplitAt
     ,   splitWhen
     ,   splitLast
+    ,   chunkedStripPrefix
         -- * Transducer utilities
     ,   foldify
     ,   foldifyM
@@ -77,6 +78,7 @@ import Prelude hiding (take,drop,splitAt,dropWhile,unfold)
 
 import Data.Bifunctor
 import Data.Monoid
+import qualified Data.Monoid.Cancellative as CM
 import qualified Data.Monoid.Null as NM
 import qualified Data.Monoid.Factorial as SFM
 import Data.Functor.Identity
@@ -85,6 +87,7 @@ import Data.Foldable (Foldable,foldlM,foldl',toList)
 import Control.Applicative
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Except
 import Control.Comonad
 import Control.Comonad.Cofree 
 import Control.Foldl (Fold(..),FoldM(..))
@@ -793,6 +796,17 @@ splitLast =
         done Nothing = 
             (Nothing,[],[])
         done (Just lasti) = (Just lasti, [], [[lasti]])
+
+chunkedStripPrefix :: (CM.LeftGCDMonoid i,SFM.StableFactorialMonoid i,Traversable t,Monad m) => t i -> TransducerM (ExceptT () m) i i ()
+chunkedStripPrefix (filter (not . NM.null) . toList -> chunks) = 
+    TransducerM step (return chunks) done
+    where
+        step [] i = return ([],[i],[])
+        step xss@(x:xs) i 
+            | NM.null i = return (xss,[],[])
+            | otherwise = undefined
+        done [] = return mempty
+        done (_:_) = throwE () 
 
 {-| Ignore the firs @n@ inputs, pass all subsequent inputs to the 'Fold'.		
 
