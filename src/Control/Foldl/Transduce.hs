@@ -430,7 +430,21 @@ hoistFold :: Monad m => (forall a. m a -> n a) -> FoldM m i r -> FoldM n i r
 hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g . done)
 
 quiesce :: Monad m => FoldM (ExceptT e m) a r -> FoldM m a (Either e r)
-quiesce = undefined
+quiesce (FoldM step initial done) = 
+    FoldM step' (runExceptT initial) done'
+    where
+    step' x i = do  
+        case x of
+            Left e -> return x
+            Right notyetfail -> runExceptT (step notyetfail i)
+    done' x = do
+        case x of 
+            Left e -> return (Left e)
+            Right notyetfail -> do
+                result <- runExceptT (done notyetfail)
+                case result of 
+                    Left e -> return (Left e)
+                    Right r -> return (Right r)
 
 ------------------------------------------------------------------------------
 
