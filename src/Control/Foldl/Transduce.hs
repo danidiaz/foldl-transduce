@@ -35,10 +35,12 @@ module Control.Foldl.Transduce (
     ,   foldsM
     ,   foldsM'
         -- * Other group operations
+    ,   Infinite
     ,   groups
     ,   evenly
     ,   bisect    
         --
+    ,   Moore
     ,   groups'
     ,   evenly'
         --
@@ -67,6 +69,7 @@ module Control.Foldl.Transduce (
     ,   hoistTransducer
         -- * Fold utilities
     ,   hoistFold
+    ,   quiesce
         -- * Re-exports
         -- $reexports
     ,   module Data.Functor.Extend
@@ -426,7 +429,14 @@ hoistTransducer g (TransducerM step begin done) = TransducerM (\s i -> g (step s
 hoistFold :: Monad m => (forall a. m a -> n a) -> FoldM m i r -> FoldM n i r 
 hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g . done)
 
+quiesce :: Monad m => FoldM (ExceptT e m) a r -> FoldM m a (Either e r)
+quiesce = undefined
+
 ------------------------------------------------------------------------------
+
+type Infinite e = Cofree Identity e
+
+type Moore a b = Cofree ((->) a) b
 
 {-| Repeatedly applies a 'Transduction' to process each of the groups
     demarcated by a 'Transducer', returning a 'Fold' what works over the
@@ -457,7 +467,7 @@ hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g 
 -}
 groups :: ToTransducer t 
        => t a b s 
-       -> Cofree Identity (ReifiedTransduction b c) -- ^ infinite list of transductions
+       -> Infinite (ReifiedTransduction b c) -- ^ infinite list of transductions
        -> Transduction a c 
 groups splitter transductions oldfold = 
     let transductions' = 
@@ -469,7 +479,7 @@ groups splitter transductions oldfold =
     in 
     fmap snd newfold
 
-evenly :: Transduction b c -> Cofree Identity (ReifiedTransduction b c) 
+evenly :: Transduction b c -> Infinite (ReifiedTransduction b c) 
 evenly = coiter Identity . ReifiedTransduction 
 
 bisect :: ToTransducer t 
@@ -499,7 +509,7 @@ bisect t t0 t1 = groups t (ReifiedTransduction t0 :< Identity (evenly t1))
 groups' :: ToTransducer t
         => t a b s
         -> Fold u v -- ^ auxiliary 'Fold' that aggregates the @u@ values produced for each group
-        -> Cofree ((->) u) (ReifiedTransduction' b c u) -- ^ a machine that eats @u@ values and spits transductions
+        -> Moore u (ReifiedTransduction' b c u) -- ^ a machine that eats @u@ values and spits transductions
         -> Transduction' a c (s,v) 
 groups' (toTransducer -> Transducer sstep sbegin sdone) somesummarizer (ReifiedTransduction' t0 :< somemachine) somefold =
     Fold step (Quartet sbegin somesummarizer (t0 (duplicated somefold)) somemachine) done 
@@ -535,7 +545,7 @@ groups' (toTransducer -> Transducer sstep sbegin sdone) somesummarizer (ReifiedT
                 (u,finalfold) = extract innerfold'
             in  ((s,L.fold summarizer' [u]),extract finalfold)
 
-evenly' :: Transduction' b c u -> Cofree ((->) u) (ReifiedTransduction' b c u) 
+evenly' :: Transduction' b c u -> Moore u (ReifiedTransduction' b c u) 
 evenly' = coiter const . ReifiedTransduction' 
 
 
@@ -552,7 +562,7 @@ evenly' = coiter const . ReifiedTransduction'
 
 groupsM :: (Monad m, ToTransducerM m t)
                => t a b s -- ^
-               -> Cofree Identity (ReifiedTransductionM m b c)
+               -> Infinite (ReifiedTransductionM m b c)
                -> TransductionM m a c
 groupsM splitter transductions oldfold = 
     let transductions' = 
@@ -565,7 +575,7 @@ groupsM splitter transductions oldfold =
     in 
     fmap snd newfold
 
-evenlyM :: TransductionM m b c -> Cofree Identity (ReifiedTransductionM m b c) 
+evenlyM :: TransductionM m b c -> Infinite (ReifiedTransductionM m b c) 
 evenlyM = coiter Identity . ReifiedTransductionM
 
 
@@ -594,7 +604,7 @@ bisectM t t0 t1 = groupsM t (ReifiedTransductionM t0 :< Identity (evenlyM t1))
 groupsM' :: (Monad m, ToTransducerM m t) 
          => t a b s 
          -> FoldM m u v 
-         -> Cofree ((->) u) (ReifiedTransductionM' m b c u) -- ^ a machine that eats @u@ values and spits transductions
+         -> Moore u (ReifiedTransductionM' m b c u) -- ^ a machine that eats @u@ values and spits transductions
          -> TransductionM' m a c (s,v) 
 
 groupsM' (toTransducerM -> TransducerM sstep sbegin sdone) somesummarizer (ReifiedTransductionM' t0 :< somemachine) somefold =
@@ -630,7 +640,7 @@ groupsM' (toTransducerM -> TransducerM sstep sbegin sdone) somesummarizer (Reifi
             return ((s,v),r)
 
 
-evenlyM' :: TransductionM' m b c u -> Cofree ((->) u) (ReifiedTransductionM' m b c u) 
+evenlyM' :: TransductionM' m b c u -> Moore u (ReifiedTransductionM' m b c u) 
 evenlyM' = coiter const . ReifiedTransductionM'
 
 {-| Summarizes each of the groups demarcated by the 'Transducer' using a
