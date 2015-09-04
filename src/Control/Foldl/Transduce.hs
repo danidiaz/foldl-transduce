@@ -527,13 +527,13 @@ groups' (toTransducer -> Transducer sstep sbegin sdone) somesummarizer (ReifiedT
         done (Quartet sstate summarizer innerfold machine) = 
             let 
                 (s,oldSplit,newSplits) = sdone sstate
-                (_,innerfold',_) = 
+                (summarizer',innerfold',_) = 
                    foldl' 
                    step'
                    (summarizer,feed innerfold oldSplit,machine) 
                    newSplits
                 (u,finalfold) = extract innerfold'
-            in  ((s,L.fold summarizer [u]),extract finalfold)
+            in  ((s,L.fold summarizer' [u]),extract finalfold)
 
 evenly' :: Transduction' b c u -> Cofree ((->) u) (ReifiedTransduction' b c u) 
 evenly' = coiter const . ReifiedTransduction' 
@@ -623,9 +623,9 @@ groupsM' (toTransducerM -> TransducerM sstep sbegin sdone) somesummarizer (Reifi
         done (Quartet sstate summarizer innerfold machine) = do
             (s,oldSplit,newSplits) <- sdone sstate
             innerfold' <- feed innerfold oldSplit
-            (summarizer',innerfold'',machine') <- foldlM step' (summarizer,innerfold',machine) newSplits
+            (summarizer',innerfold'',_) <- foldlM step' (summarizer,innerfold',machine) newSplits
             (u,finalfold) <- L.foldM innerfold'' []
-            v <- L.foldM summarizer [u]
+            v <- L.foldM summarizer' [u]
             r <- L.foldM finalfold []
             return ((s,v),r)
 
