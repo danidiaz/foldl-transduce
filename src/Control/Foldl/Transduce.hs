@@ -55,6 +55,7 @@ module Control.Foldl.Transduce (
         -- * Splitters
     ,   chunksOf
     ,   splitAt
+    ,   chunkedSplitAt
     ,   splitWhen
     ,   splitLast
         -- * Transducer utilities
@@ -76,6 +77,8 @@ import Prelude hiding (take,drop,splitAt,dropWhile,unfold)
 
 import Data.Bifunctor
 import Data.Monoid
+import qualified Data.Monoid.Null as NM
+import qualified Data.Monoid.Factorial as SFM
 import Data.Functor.Identity
 import Data.Functor.Extend
 import Data.Foldable (Foldable,foldlM,foldl',toList)
@@ -737,6 +740,25 @@ splitAt howmany =
                 (Nothing,[],[[i]])
             | otherwise = 
                 (Just (pred howmanypending),[i],[]) 
+        done = mempty
+
+chunkedSplitAt :: SFM.StableFactorialMonoid m => Int -> Transducer m m ()
+chunkedSplitAt howmany = 
+    Transducer step (Just howmany) done
+    where
+        step Nothing m =
+            (Nothing,[m],[])
+        step (Just howmanypending) m
+            | NM.null m = 
+                (Just howmanypending,[],[])
+            | howmanypending == 0 = 
+                (Nothing,[],[[m]])
+            | howmanypending >= SFM.length m =
+                (Just (howmanypending - SFM.length m),[m],[])
+            | otherwise =
+                let (prefix,suffix) = SFM.splitAt howmanypending m
+                in
+                (Nothing,[prefix],[[suffix]])
         done = mempty
 
 data SplitWhenWhenState = 
