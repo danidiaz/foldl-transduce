@@ -1,6 +1,10 @@
 module Main where
 
+import Prelude hiding (splitAt)
+import Data.String hiding (lines,words)
 import Data.Monoid
+import Data.Bifunctor
+import qualified Data.Monoid.Factorial as SFM
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -55,5 +59,23 @@ tests =
                 (T.pack "\n")
                 (mconcat (L.fold (transduce newline L.list) (map T.pack [""])))
         ]
+        ,
+        testGroup "quiesceWith" $ 
+        [
+            testCase "collectAfterFailure" $
+                let foldthatfails = 
+                        transduceM utf8E (L.generalize L.list)
+                    inputs = 
+                        map fromString ["invalid \xc3\x28 sequence","xxx","zzz","___"]
+                    fallbackfold =
+                        bisectM (chunkedSplitAt 4) id (transduceM ignore) (L.generalize L.list)
+                in
+                do
+                   r <- L.foldM (quiesceWith fallbackfold foldthatfails) inputs 
+                   assertEqual 
+                       mempty 
+                       (Left ('C',4))
+                       (first (bimap (head . show) (SFM.length . mconcat)) r)
+        ]   
     ]
 
