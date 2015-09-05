@@ -201,6 +201,9 @@ instance Bifunctor (Transducer i) where
             ((\(x,xs,xss) -> (x,map f xs, map (map f) xss)) . done) 
     second f w = fmap f w
 
+{-| Helps converting monadic transducers (over 'Identity') into pure ones.		
+
+-}
 class ToTransducer t where
     toTransducer :: t i o r -> Transducer i o r
 
@@ -258,6 +261,10 @@ instance Monad m => Extend (TransducerM m i o) where
         TransducerM step begin (\x -> return $! (TransducerM step (return x) done,[],[]))
     {-# INLINABLE duplicated #-}
 
+
+{-| Helps converting pure transducers into monadic ones.		
+
+-}
 class ToTransducerM m t where
     toTransducerM :: t i o r -> TransducerM m i o r
 
@@ -446,6 +453,9 @@ condense (Fold fstep fstate fdone) =
         wstep = \fstate' i -> (fstep fstate' i,[],[])
         wdone = \fstate' -> (\r -> (r,[r],[])) (fdone fstate')
 
+{-| Monadic version of 'condense'.		
+
+-}
 condenseM :: Applicative m => FoldM m a r -> TransducerM m a r r
 condenseM (FoldM fstep fstate fdone) = 
     (TransducerM wstep fstate wdone)
@@ -466,6 +476,14 @@ hoistTransducer g (TransducerM step begin done) = TransducerM (\s i -> g (step s
 hoistFold :: Monad m => (forall a. m a -> n a) -> FoldM m i r -> FoldM n i r 
 hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g . done)
 
+{-| Turn a 'FoldM' that fails abruptly into one that encodes the error into
+    its return value.
+
+    Can be useful when combining fallible 'FoldM's with non-fallible ones.
+
+>>> L.foldM (quiesce (FoldM (\_ _-> throwE ()) (return ()) (\_ -> throwE ()))) [1..7]
+Left ()
+-}
 quiesce :: Monad m => FoldM (ExceptT e m) a r -> FoldM m a (Either e r)
 quiesce (FoldM step initial done) = 
     FoldM step' (runExceptT initial) done'
@@ -483,7 +501,15 @@ quiesce (FoldM step initial done) =
                     Left e -> return (Left e)
                     Right r -> return (Right r)
 
+{-| Generalized version of 'quiesce' to turn a fallible 'FoldM' into another
+    that starts a "fallback fold" when it encounters an error.
 
+    "Start folding this way, if you encounter an error, start folding this 
+    other way".                               
+
+>>> L.foldM (quiesceWith (L.generalize L.length) (FoldM (\_ _-> throwE ()) (return ()) (\_ -> throwE ()))) [1..7]
+Left ((),7)
+-}
 quiesceWith :: Monad m => FoldM m a v -> FoldM (ExceptT e m) a r -> FoldM m a (Either (e,v) r)
 quiesceWith fallbackFold (FoldM step initial done) = 
     FoldM step' (runExceptT (withExceptT (Pair fallbackFold) initial)) done'
@@ -514,12 +540,18 @@ quiesceWith fallbackFold (FoldM step initial done) =
 
 ------------------------------------------------------------------------------
 
+{-| Infinite list of values.		
+
+-}
 type Infinite e = Cofree Identity e
 
+{-| Unending machine that gives you a @b@ whenever you give it an @a@.
+
+-}
 type Moore a b = Cofree ((->) a) b
 
 {-| Processes each of the groups demarcated by a 'Transducer' using 
-    a 'Transduction' taken from an infinite supply, 
+    a 'Transduction' taken from an unending supply, 
     returning a 'Transduction' what works over the undivided stream of inputs. 
     
     The return value of the 'Transducer' is discarded.
@@ -550,9 +582,16 @@ groups splitter transductions oldfold =
     in 
     fmap snd newfold
 
+{-| Use the same 'Transduction' for each group.		
+
+-}
 evenly :: Transduction b c -> Infinite (ReifiedTransduction b c) 
 evenly = coiter Identity . ReifiedTransduction 
 
+{-| Use one transduction to process the first group, and another for the second
+    and all subsequent groups.		
+
+-}
 bisect :: ToTransducer t 
        => t a b s 
        -> Transduction b c -- ^ head
@@ -614,6 +653,11 @@ groups' (toTransducer -> Transducer sstep sbegin sdone) somesummarizer (ReifiedT
                 (u,finalfold) = extract innerfold'
             in  ((s,L.fold summarizer' [u]),extract finalfold)
 
+{-| Use the same 'Transduction'' for each group.
+
+    Ignores the inputs to the Moore machine.
+
+-}
 evenly' :: Transduction' b c u -> Moore u (ReifiedTransduction' b c u) 
 evenly' = coiter const . ReifiedTransduction' 
 
@@ -636,10 +680,15 @@ groupsM splitter transductions oldfold =
     in 
     fmap snd newfold
 
+{-| Monadic version of 'evenly'.		
+
+-}
 evenlyM :: TransductionM m b c -> Infinite (ReifiedTransductionM m b c) 
 evenlyM = coiter Identity . ReifiedTransductionM
 
+{-| Monadic version of 'bisect'.		
 
+-}
 bisectM :: ToTransducerM m t 
         => t a b s 
         -> TransductionM m b c -- ^ head
@@ -689,6 +738,9 @@ groupsM' (toTransducerM -> TransducerM sstep sbegin sdone) somesummarizer (Reifi
             return ((s,v),r)
 
 
+{-| Monadic version of 'evenly''.		
+
+-}
 evenlyM' :: TransductionM' m b c u -> Moore u (ReifiedTransductionM' m b c u) 
 evenlyM' = coiter const . ReifiedTransductionM'
 
@@ -747,7 +799,7 @@ chunksOf groupSize = Transducer step groupSize done
         step i a = (pred i, [a], [])
         done _ = ((),[],[])
 
-{-| Pass the first @n@ inputs to the 'Fold', and ignore the rest.		
+{-| Splits the stream at a given position.		
 
 >>> L.fold (bisect (splitAt 2) (transduce ignore) id L.list) [1..5]
 [3,4,5]
@@ -766,6 +818,13 @@ splitAt howmany =
                 (Just (pred howmanypending),[i],[]) 
         done = mempty
 
+{-| Similar to `splitAt`, but works with streams of "chunked" data like
+    bytestrings, texts, vectors, lists of lists...		
+
+>>> L.fold (bisect (chunkedSplitAt 7) (transduce ignore) id L.list) [[1..5],[6..9]]
+[[8,9]]
+
+-}
 chunkedSplitAt :: SFM.StableFactorialMonoid m => Int -> Transducer m m ()
 chunkedSplitAt howmany = 
     Transducer step (Just howmany) done
@@ -806,6 +865,12 @@ splitWhen predicate =
                (SplitWhenConditionEncountered,[i],[])
         done = mempty
 
+{-| Puts the last element of the input stream (if it exists) in a separate
+    group.
+
+>>> L.fold (bisect splitLast id (transduce ignore) L.list) [1..5]
+[1,2,3,4]
+-}
 splitLast :: Transducer a a (Maybe a)
 splitLast =
     Transducer step Nothing done
@@ -818,6 +883,17 @@ splitLast =
             (Nothing,[],[])
         done (Just lasti) = (Just lasti, [], [[lasti]])
 
+{-| Strip a prefix from a stream of "chunked" data, like packed text.		
+
+    If the prefix doesn't match, fail with the unmatched part of the prefix and
+    the input that caused the error.
+
+>>> runExceptT $ L.foldM (transduceM (chunkedStripPrefix [[1..2],[3..4]]) (L.generalize L.list)) [[1..5],[6..9]]
+Right [[5],[6,7,8,9]]
+
+>>> runExceptT $ L.foldM (transduceM (chunkedStripPrefix [[1..2],[3,77,99]]) (L.generalize L.list)) [[1..5],[6..9]]
+Left ([[77,99]],Just [4,5])
+-}
 chunkedStripPrefix :: (CM.LeftGCDMonoid i,SFM.StableFactorialMonoid i,Traversable t,Monad m) 
                    => t i -- ^
                    -> TransducerM (ExceptT ([i],Maybe i) m) i i ()
