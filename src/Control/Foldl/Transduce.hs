@@ -90,6 +90,7 @@ import qualified Data.Monoid.Factorial as SFM
 import Data.Functor.Identity
 import Data.Functor.Extend
 import Data.Foldable (Foldable,foldlM,foldl',toList)
+import Data.Traversable
 import Control.Applicative
 import Control.Monad
 import Control.Monad.IO.Class
@@ -510,7 +511,7 @@ quiesce (FoldM step initial done) =
 >>> L.foldM (quiesceWith (L.generalize L.length) (FoldM (\_ _-> throwE ()) (return ()) (\_ -> throwE ()))) [1..7]
 Left ((),7)
 -}
-quiesceWith :: Monad m => FoldM m a v -> FoldM (ExceptT e m) a r -> FoldM m a (Either (e,v) r)
+quiesceWith :: (Functor m,Monad m) => FoldM m a v -> FoldM (ExceptT e m) a r -> FoldM m a (Either (e,v) r)
 quiesceWith fallbackFold (FoldM step initial done) = 
     FoldM step' (runExceptT (withExceptT (Pair fallbackFold) initial)) done'
     where
