@@ -139,10 +139,10 @@ decoderE next = L.TransducerM step (return (Pair mempty next')) done
 {-| Like 'utf8strict', but catches 'UnicodeException' in 'IO' and uses
     'Control.Monad.Trans.Except' to communicate the error.		
 
->>> (id :: IO x -> IO x) $ runExceptT $ L.foldM (transduceM utf8E (L.generalize L.list)) (map fromString ["invalid \xc3\x28 sequence"])
+>>> runExceptT $ L.foldM (transduceM utf8E (L.generalize L.list)) (map fromString ["invalid \xc3\x28 sequence"])
 Left Cannot decode byte '\x28': Data.Text.Internal.Encoding.streamDecodeUtf8With: Invalid UTF-8 stream
 
->>> (id :: IO x -> IO x) $ runExceptT $ L.foldM (transduceM utf8E (L.generalize L.list)) (map fromString ["incomplete \xe2"])
+>>> runExceptT $ L.foldM (transduceM utf8E (L.generalize L.list)) (map fromString ["incomplete \xe2"])
 Left Cannot decode input: leftovers
 -}
 utf8E :: MonadIO m => L.TransducerM (ExceptT T.UnicodeException m) B.ByteString T.Text ()   
@@ -198,10 +198,10 @@ stripEnd = L.Transducer step [] done
 
 {-| Splits a stream of text into lines, removing the newlines.
 
->>> L.fold (L.groups lines (transduce (surround [T.pack "x"] [])) L.list) (map T.pack ["line 1\n line 2\n"])
+>>> L.fold (L.groups lines (evenly (transduce (surround [T.pack "x"] []))) L.list) (map T.pack ["line 1\n line 2\n"])
 ["x","line 1","x"," line 2"]
 
->>> L.fold (L.groups lines (transduce newline) L.list) (map T.pack ["line 1\n line 2\n"])
+>>> L.fold (L.groups lines (evenly (transduce newline)) L.list) (map T.pack ["line 1\n line 2\n"])
 ["line 1","\n"," line 2","\n"]
 
     Used with 'L.transduce', it simply removes newlines:

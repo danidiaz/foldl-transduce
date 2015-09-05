@@ -2,6 +2,7 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE CPP #-}
 
 -- |
@@ -105,7 +106,7 @@ import Control.Foldl.Transduce.Internal (Pair(..),Quartet(..),_1of3)
 >>> import Control.Foldl.Transduce
 >>> import Control.Applicative
 >>> import qualified Control.Comonad.Cofree as C
->>> import Prelude hiding (take,drop,takeWhile,dropWhile)
+>>> import Prelude hiding (splitAt,takeWhile,dropWhile)
 
 -}
 
@@ -260,7 +261,8 @@ instance Monad m => Extend (TransducerM m i o) where
 class ToTransducerM m t where
     toTransducerM :: t i o r -> TransducerM m i o r
 
-instance ToTransducerM m (TransducerM m) where
+-- http://chrisdone.com/posts/haskell-constraint-trick
+instance (m ~ m') => ToTransducerM m (TransducerM m') where
     toTransducerM = id
 
 instance Monad m => ToTransducerM m Transducer where
@@ -352,8 +354,8 @@ data SurroundState = PrefixAdded | PrefixPending
     Used as a splitter, it puts the prefix, the original stream and
     the suffix in separate groups:
 
->>> L.fold (groups (surround "prefix" "suffix") (evenly (transduce (surround "[" "]")) L.list) "middle"
-"prefixmiddlesuffix"
+>>> L.fold (groups (surround "prefix" "suffix") (evenly (transduce (surround "[" "]"))) L.list) "middle"
+"[prefix][middle][suffix]"
 
 -}
 surround :: (Traversable p, Traversable s) => p a -> s a -> Transducer a a ()
@@ -567,9 +569,9 @@ bisect t t0 t1 = groups t (ReifiedTransduction t0 :< Identity (evenly t1))
 
 >>> :{ 
     let 
-      transducers = evenly' $ \f ->
-          transduce (surround "<" ">") (liftA2 (,) L.list f)
-    in L.fold (groups' (chunksOf 2) L.list transductions L.list) "aabbccdd"
+        transductions = evenly' $ \f ->
+            transduce (surround "<" ">") (liftA2 (,) L.list f)
+    in  L.fold (groups' (chunksOf 2) L.list transductions L.list) "aabbccdd"
     :}
 (((),["<aa>","<bb>","<cc>","<dd>"]),"<aa><bb><cc><dd>")
 -}
@@ -708,9 +710,9 @@ folds splitter f = groups splitter (evenly (transduce (condense f)))
 -}
 folds' :: ToTransducer t => t a b s -> Fold b c -> Transduction' a c s
 folds' splitter innerfold somefold = 
-    fmap (bimap fst id) (groups' splitter L.mconcat (evenly' innertrans) somefold)
+    fmap (bimap fst id) (groups' splitter L.mconcat innertrans somefold)
     where
-    innertrans = fmap ((,) ()) . transduce (condense innerfold)
+    innertrans = evenly' $ \x -> fmap ((,) ()) (transduce (condense innerfold) x)
 
 {-| Monadic version of 'folds'.		
 
@@ -723,9 +725,9 @@ foldsM splitter f = groupsM splitter (evenlyM (transduceM (condenseM f)))
 -}
 foldsM' :: (Applicative m,Monad m, ToTransducerM m t) => t a b s -> FoldM m b c -> TransductionM' m a c s
 foldsM' splitter innerfold somefold = 
-    fmap (bimap fst id) (groupsM' splitter (L.generalize L.mconcat) (evenlyM' innertrans) somefold)
+    fmap (bimap fst id) (groupsM' splitter (L.generalize L.mconcat) innertrans somefold)
     where
-    innertrans = fmap ((,) ()) . transduceM (condenseM innerfold)
+    innertrans = evenlyM' $ \x -> fmap ((,) ()) (transduceM (condenseM innerfold) x)
 
 ------------------------------------------------------------------------------
 
@@ -734,7 +736,7 @@ foldsM' splitter innerfold somefold =
 >>> L.fold (folds (chunksOf 2) L.list L.list) [1..7]
 [[1,2],[3,4],[5,6],[7]]
 
->>> L.fold (groups (chunksOf 2) (transduce (surround [] [0])) L.list) [1..7]
+>>> L.fold (groups (chunksOf 2) (evenly (transduce (surround [] [0]))) L.list) [1..7]
 [1,2,0,3,4,0,5,6,0,7,0]
 -}
 chunksOf :: Int -> Transducer a a ()
@@ -747,11 +749,9 @@ chunksOf groupSize = Transducer step groupSize done
 
 {-| Pass the first @n@ inputs to the 'Fold', and ignore the rest.		
 
->>> L.fold (transduce (take 2) L.list) [1..5]
-[1,2]
+>>> L.fold (bisect (splitAt 2) (transduce ignore) id L.list) [1..5]
+[3,4,5]
 
->>> L.fold (transduce (take 0) L.list) [1..5]
-[]
 -}
 splitAt :: Int -> Transducer a a ()
 splitAt howmany = 
@@ -791,8 +791,8 @@ data SplitWhenWhenState =
 
 {-| 		
 
->>> L.fold (transduce (takeWhile (<3)) L.list) [1..5]
-[1,2]
+>>> L.fold (bisect (splitWhen (>3)) id (transduce ignore) L.list) [1..5]
+[1,2,3]
 -}
 splitWhen :: (a -> Bool) -> Transducer a a ()
 splitWhen predicate = 
