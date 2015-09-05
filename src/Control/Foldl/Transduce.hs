@@ -12,16 +12,12 @@
 module Control.Foldl.Transduce (
         -- * Transducer types
         Transduction 
-    ,   ReifiedTransduction (..)
     ,   Transduction' 
-    ,   ReifiedTransduction' (..)
     ,   Transducer(..)
     ,   ToTransducer(..)
         -- ** Monadic transducer types
     ,   TransductionM
-    ,   ReifiedTransductionM (..)
     ,   TransductionM'
-    ,   ReifiedTransductionM' (..)
     ,   TransducerM(..)
     ,   ToTransducerM(..)
         -- * Applying transducers
@@ -34,20 +30,24 @@ module Control.Foldl.Transduce (
     ,   folds'
     ,   foldsM
     ,   foldsM'
-        -- * Other group operations
+        -- * Group operations
     ,   Infinite
+    ,   ReifiedTransduction (..)
     ,   groups
     ,   evenly
     ,   bisect    
         --
     ,   Moore
+    ,   ReifiedTransduction' (..)
     ,   groups'
     ,   evenly'
-        --
+        -- ** Monadic group operations
+    ,   ReifiedTransductionM (..)
     ,   groupsM
     ,   evenlyM
     ,   bisectM
         --
+    ,   ReifiedTransductionM' (..)
     ,   groupsM'
     ,   evenlyM'
         -- * Transducers
@@ -68,8 +68,9 @@ module Control.Foldl.Transduce (
     ,   condenseM
     ,   hoistTransducer
         -- * Fold utilities
-    ,   hoistFold
     ,   quiesce
+    ,   quiesceWith
+    ,   hoistFold
         -- * Re-exports
         -- $reexports
     ,   module Data.Functor.Extend
@@ -77,7 +78,7 @@ module Control.Foldl.Transduce (
     ,   module Control.Comonad.Cofree
     ) where
 
-import Prelude hiding (take,drop,splitAt,dropWhile,unfold)
+import Prelude hiding (take,drop,splitAt,dropWhile)
 
 import Data.Bifunctor
 import Data.Monoid
@@ -95,7 +96,7 @@ import Control.Comonad
 import Control.Comonad.Cofree 
 import Control.Foldl (Fold(..),FoldM(..))
 import qualified Control.Foldl as L
-import Control.Foldl.Transduce.Internal (Pair(..),Trio(..),Quartet(..),_1of3)
+import Control.Foldl.Transduce.Internal (Pair(..),Quartet(..),_1of3)
 
 {- $setup
 
@@ -435,7 +436,7 @@ quiesce (FoldM step initial done) =
     where
     step' x i = do  
         case x of
-            Left e -> return x
+            Left _ -> return x
             Right notyetfail -> runExceptT (step notyetfail i)
     done' x = do
         case x of 
@@ -445,6 +446,43 @@ quiesce (FoldM step initial done) =
                 case result of 
                     Left e -> return (Left e)
                     Right r -> return (Right r)
+
+
+quiesceWith :: Monad m => FoldM m a v -> FoldM (ExceptT e m) a r -> FoldM m a (Either (e,v) r)
+quiesceWith fallback (FoldM step initial done) = 
+    FoldM step' (runExceptT (withExceptT (Pair fallback) initial)) done'
+    where
+    step' x i = do  
+        case x of
+            Left (Pair fallback' e) -> do
+                fallback'' <- L.foldM (duplicated fallback') [i]
+                return (Left (Pair fallback'' e))
+            Right notyetfail -> do
+                 x' <- runExceptT (step notyetfail i)
+                 case x' of
+                     Left e' -> do
+                         fallbackxx <- L.foldM (duplicated fallback) [i]
+                         return (Left (Pair fallbackxx e'))
+                     Right xxx -> return (Right xxx)
+    done' x = case x of
+            Left (Pair fallback' e) -> do
+                alternate <- L.foldM fallback' []
+                return (Left (e,alternate))
+            Right notyetfail -> do 
+                notyetfailx <- runExceptT (done notyetfail)
+                case notyetfailx of
+                    Left ex -> do
+                        falbackyy <- L.foldM fallback []
+                        return (Left (ex,falbackyy))
+                    Right notyetfaily -> return (Right notyetfaily)
+
+--        case x of 
+--            Left e -> return (Left e)
+--            Right notyetfail -> do
+--                result <- runExceptT (done notyetfail)
+--                case result of 
+--                    Left e -> return (Left e)
+--                    Right r -> return (Right r)
 
 ------------------------------------------------------------------------------
 
@@ -821,7 +859,9 @@ splitLast =
             (Nothing,[],[])
         done (Just lasti) = (Just lasti, [], [[lasti]])
 
-chunkedStripPrefix :: (CM.LeftGCDMonoid i,SFM.StableFactorialMonoid i,Traversable t,Monad m) => t i -> TransducerM (ExceptT () m) i i ()
+chunkedStripPrefix :: (CM.LeftGCDMonoid i,SFM.StableFactorialMonoid i,Traversable t,Monad m) 
+                   => t i -- ^
+                   -> TransducerM (ExceptT ([i],Maybe i) m) i i ()
 chunkedStripPrefix (filter (not . NM.null) . toList -> chunks) = 
     TransducerM step (return chunks) done
     where
@@ -831,15 +871,15 @@ chunkedStripPrefix (filter (not . NM.null) . toList -> chunks) =
             let (prefix',i',x') = CM.stripCommonPrefix i x 
             in 
             if NM.null prefix'
-                then throwE ()
+                then throwE (x:xs,Just i)
                 else 
                     if NM.null x' 
                        then step xs i'
                        else step (x':xs) i'
         done [] = 
             return mempty
-        done (_:_) = 
-            throwE () 
+        done (x:xs) = 
+            throwE (x:xs, Nothing) 
 
 {-| Ignore the firs @n@ inputs, pass all subsequent inputs to the 'Fold'.		
 
