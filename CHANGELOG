@@ -1,11 +1,13 @@
 # 0.3.0.0
 
-- Transducers can now delimit segments in the done function as well.
+- Transducers can now delimit segments in the done function, too.
   This was required for transducers like surround to work as splitters.
-- strengthened the constraints on the surround function to traversable
-- Added dependency on free and monoid-sublasses
-- Added group functions that allow treating each group differently.
+- Strengthened the constraints on the surround function to Traversable.
+- Added dependency on free and monoid-sublasses.
+- group functions extract transductions from an infinite list.
 - Added ignore, splitAt, splitWhen, splitLast
+- removed drop, take... use splitAt, splitWhen + bisect.
+- Added bisect, evenly convenience functions.
 
 # 0.2.1.0
 

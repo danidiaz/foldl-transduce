@@ -25,6 +25,7 @@ module Control.Foldl.Transduce (
     ,   transduce'
     ,   transduceM
     ,   transduceM'
+    ,   transduceK
         -- * Folding over groups
     ,   folds
     ,   folds'
@@ -301,6 +302,12 @@ transduceM' (toTransducerM -> TransducerM wstep wstate wdone) (FoldM fstep fstat
                 fr <- fdone =<< foldlM fstep fs (os ++ mconcat oss)
                 return $! (,) wr fr
 
+transduceK :: (Monad m) => (i -> m [o]) -> TransductionM m i o 
+transduceK k = transduceM (TransducerM step (return ()) (\_ -> return ((),[],[])))
+    where
+    step _ i = liftM (\os -> ((),os,[])) (k i)
+
+
 ------------------------------------------------------------------------------
 
 {-| Polymorphic in both inputs and outputs.		
@@ -327,13 +334,13 @@ surround (toList -> ps) (toList -> ss) =
     Transducer step PrefixPending done 
     where
         step PrefixPending a = 
-            (PrefixAdded, ps ++ [a],[])
+            (PrefixAdded, ps,[[a]])
         step PrefixAdded a = 
             (PrefixAdded, [a],[])
         done PrefixPending = 
-            ((), ps ++ ss, [])
+            ((), ps, [[],ss])
         done PrefixAdded = 
-            ((), ss, [])
+            ((), [], [ss])
 
 {-| Like 'surround', but the prefix and suffix are obtained using a 'IO'
     action.
@@ -350,16 +357,16 @@ surroundIO prefixa suffixa =
     where
         step PrefixPending a = do
             ps <- fmap toList prefixa
-            return (PrefixAdded, ps ++ [a],[])
+            return (PrefixAdded, ps, [[a]])
         step PrefixAdded a = 
-            return (PrefixAdded, [a],[])
+            return (PrefixAdded, [a], [])
         done PrefixPending = do
             ps <- fmap toList prefixa
             ss <- fmap toList suffixa
-            return ((), toList ps ++ toList ss, [])
+            return ((), ps, [[],ss])
         done PrefixAdded = do
             ss <- fmap toList suffixa
-            return ((), toList ss , [])
+            return ((), [], [ss])
 
 ------------------------------------------------------------------------------
 
@@ -449,40 +456,32 @@ quiesce (FoldM step initial done) =
 
 
 quiesceWith :: Monad m => FoldM m a v -> FoldM (ExceptT e m) a r -> FoldM m a (Either (e,v) r)
-quiesceWith fallback (FoldM step initial done) = 
-    FoldM step' (runExceptT (withExceptT (Pair fallback) initial)) done'
+quiesceWith fallbackFold (FoldM step initial done) = 
+    FoldM step' (runExceptT (withExceptT (Pair fallbackFold) initial)) done'
     where
     step' x i = do  
         case x of
-            Left (Pair fallback' e) -> do
-                fallback'' <- L.foldM (duplicated fallback') [i]
-                return (Left (Pair fallback'' e))
+            Left (Pair ffold e) -> do
+                ffold' <- L.foldM (duplicated ffold) [i]
+                return (Left (Pair ffold' e))
             Right notyetfail -> do
                  x' <- runExceptT (step notyetfail i)
                  case x' of
-                     Left e' -> do
-                         fallbackxx <- L.foldM (duplicated fallback) [i]
-                         return (Left (Pair fallbackxx e'))
-                     Right xxx -> return (Right xxx)
+                     Left e -> do
+                         ffold <- L.foldM (duplicated fallbackFold) [i]
+                         return (Left (Pair ffold e))
+                     Right x'' -> return (Right x'')
     done' x = case x of
-            Left (Pair fallback' e) -> do
-                alternate <- L.foldM fallback' []
-                return (Left (e,alternate))
+            Left (Pair ffold e) -> do
+                alternativeResult <- L.foldM ffold []
+                return (Left (e,alternativeResult))
             Right notyetfail -> do 
-                notyetfailx <- runExceptT (done notyetfail)
-                case notyetfailx of
-                    Left ex -> do
-                        falbackyy <- L.foldM fallback []
-                        return (Left (ex,falbackyy))
-                    Right notyetfaily -> return (Right notyetfaily)
-
---        case x of 
---            Left e -> return (Left e)
---            Right notyetfail -> do
---                result <- runExceptT (done notyetfail)
---                case result of 
---                    Left e -> return (Left e)
---                    Right r -> return (Right r)
+                x' <- runExceptT (done notyetfail)
+                case x' of
+                    Left e -> do
+                        alternativeResult <- L.foldM fallbackFold []
+                        return (Left (e,alternativeResult))
+                    Right x'' -> return (Right x'')
 
 ------------------------------------------------------------------------------
 
