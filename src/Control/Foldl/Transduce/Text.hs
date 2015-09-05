@@ -39,6 +39,7 @@ import Control.Foldl.Transduce.Internal (Pair(..))
 
 {- $setup
 
+>>> :set -XFlexibleContexts
 >>> import Data.String hiding (lines,words)
 >>> import Data.Text (Text)
 >>> import Control.Applicative
@@ -138,10 +139,10 @@ decoderE next = L.TransducerM step (return (Pair mempty next')) done
 {-| Like 'utf8strict', but catches 'UnicodeException' in 'IO' and uses
     'Control.Monad.Trans.Except' to communicate the error.		
 
->>> runExceptT $ L.foldM (transduceM utf8E (L.generalize L.list)) (map fromString ["invalid \xc3\x28 sequence"])
+>>> (id :: IO x -> IO x) $ runExceptT $ L.foldM (transduceM utf8E (L.generalize L.list)) (map fromString ["invalid \xc3\x28 sequence"])
 Left Cannot decode byte '\x28': Data.Text.Internal.Encoding.streamDecodeUtf8With: Invalid UTF-8 stream
 
->>> runExceptT $ L.foldM (transduceM utf8E (L.generalize L.list)) (map fromString ["incomplete \xe2"])
+>>> (id :: IO x -> IO x) $ runExceptT $ L.foldM (transduceM utf8E (L.generalize L.list)) (map fromString ["incomplete \xe2"])
 Left Cannot decode input: leftovers
 -}
 utf8E :: MonadIO m => L.TransducerM (ExceptT T.UnicodeException m) B.ByteString T.Text ()   
