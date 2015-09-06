@@ -38,8 +38,8 @@ module Control.Foldl.Transduce (
     ,   reify
     ,   reify'
     ,   Moore(..)
-    ,   moveHead
     ,   ToTransductions' (..)
+    ,   moveHead
     ,   groups
     ,   bisect
     ,   groups'
@@ -48,8 +48,8 @@ module Control.Foldl.Transduce (
     ,   reifyM
     ,   reifyM'
     ,   MooreM(..)
-    ,   moveHeadM
     ,   ToTransductionsM' (..)
+    ,   moveHeadM
     ,   groupsM
     ,   bisectM
     ,   groupsM'
@@ -154,6 +154,9 @@ type Transduction' a b r = forall x. Fold b x -> Fold a (r,x)
 -}
 newtype ReifiedTransduction' a b r = ReifiedTransduction' { getTransduction' :: Transduction' a b r }
 
+{-| Convenience constructor, often useful with pure functions like 'id'.		
+
+-}
 reify :: Transduction a b -> ReifiedTransduction' a b ()
 reify t = reify' (fmap (fmap ((,) ())) t)  
 
@@ -242,9 +245,15 @@ type TransductionM' m a b r = forall x. FoldM m b x -> FoldM m a (r,x)
 -}
 newtype ReifiedTransductionM' m a b r = ReifiedTransductionM' { getTransductionM' :: TransductionM' m a b r }
 
+{-| Monadic version of 'reify'.		
+
+-}
 reifyM :: Monad m => TransductionM m a b -> ReifiedTransductionM' m a b ()
 reifyM t = reifyM' (fmap (fmap ((,) ())) t)  
 
+{-| Monadic version of 'reifyM'.		
+
+-}
 reifyM' :: TransductionM' m a b r -> ReifiedTransductionM' m a b r
 reifyM' = ReifiedTransductionM' 
 
@@ -564,16 +573,33 @@ quiesceWith fallbackFold (FoldM step initial done) =
 
 ------------------------------------------------------------------------------
 
+{-| An unending machine that eats @u@ values and returns 
+    'ReifiedTransduction''s whose result type is also @u@.
+
+-}
 newtype Moore a b u = Moore { getMoore :: Cofree ((->) u) (ReifiedTransduction' a b u) }
 
+{-| Monadic version of 'Moore'.		
+
+-}
 newtype MooreM m a b u = MooreM { getMooreM :: Cofree ((->) u) (ReifiedTransductionM' m a b u) }
 
-moveHead :: (ToTransductions' t1,ToTransductions' t2) => t1 a b u -> t2 a b u -> Moore a b u 
+{-| Prepend the head of the first argument to the second argument.		
+
+-}
+moveHead :: (ToTransductions' h,ToTransductions' t) => h a b u -> t a b u -> Moore a b u 
 moveHead (toTransductions' -> Moore (theHead :< _)) (toTransductions' -> Moore theTail) = Moore (theHead :< const theTail)
 
-moveHeadM :: (Monad m, ToTransductionsM' m t1, ToTransductionsM' m t2) => t1 a b u -> t2 a b u -> MooreM m a b u 
+{-| Monadic version of 'moveHead'.		
+
+-}
+moveHeadM :: (Monad m, ToTransductionsM' m h, ToTransductionsM' m t) => h a b u -> t a b u -> MooreM m a b u 
 moveHeadM (toTransductionsM' -> MooreM (theHead :< _)) (toTransductionsM' -> MooreM theTail) = MooreM (theHead :< const theTail)
 
+{-| Helper for obtaining infinite sequences of 'Transduction''s from suitable
+    types (in order to avoid explicit conversions).		
+
+-}
 class ToTransductions' t where
     toTransductions' :: t a b u -> Moore a b u
 
@@ -586,6 +612,9 @@ instance ToTransductions' Transducer where
 instance ToTransductions' ReifiedTransduction' where
     toTransductions' = Moore . coiter const
 
+{-| Monadic version of 'ToTransductions''.		
+
+-}
 class Monad m => ToTransductionsM' m t where
     toTransductionsM' :: t a b u -> MooreM m a b u
 
@@ -620,16 +649,16 @@ instance (m ~ m', Monad m') => ToTransductionsM' m (ReifiedTransductionM' m') wh
 "0aa1bb2cc3dd"
 -}
 groups :: (ToTransducer s, ToTransductions' t) 
-       => s a b r 
+       => s a b r  -- ^ 'Transducer' working as a splitter.
        -> t b c () -- ^ infinite list of transductions
        -> Transduction a c 
 groups splitter transductions oldfold = 
         fmap snd (groups' splitter transductions L.mconcat oldfold)
 
 bisect :: (ToTransducer s, ToTransductions' h, ToTransductions' t)
-       => s a b r -- ^
-       -> h b c ()
-       -> t b c ()
+       => s a b r -- ^ 'Transducer' working as a splitter.
+       -> h b c () -- ^ Machine to process the first group
+       -> t b c () -- ^ Machine to process the second and subsequent groups
        -> Transduction a c
 bisect sp t1 t2 = groups sp (moveHead t1 t2)
 
@@ -649,8 +678,8 @@ bisect sp t1 t2 = groups sp (moveHead t1 t2)
 (((),["<aa>","<bb>","<cc>","<dd>"]),"<aa><bb><cc><dd>")
 -}
 groups' :: (ToTransducer s, ToFold f, ToTransductions' t)
-        => s a b r
-        -> t b c u -- ^ a machine that eats @u@ values and spits transductions
+        => s a b r -- ^ 'Transducer' working as a splitter. 
+        -> t b c u -- ^ machine that eats @u@ values and spits transductions
         -> f     u v -- ^ auxiliary 'Fold' that aggregates the @u@ values produced for each group
         -> Transduction' a c (r,v) 
 groups' (toTransducer -> Transducer sstep sbegin sdone)  (toTransductions' -> Moore (ReifiedTransduction' t0 :< somemachine)) (toFold -> somesummarizer) somefold =
@@ -698,6 +727,9 @@ groupsM splitter transductions oldfold =
         fmap snd (groupsM' splitter transductions L.mconcat oldfold)
 
 
+{-| Monadic version of 'bisect'.		
+
+-}
 bisectM :: (Monad m, ToTransducerM m s, ToTransductionsM' m h, ToTransductionsM' m t)
                => s a b r -- ^
                -> h b c ()
@@ -710,7 +742,7 @@ bisectM s t1 t2 = groupsM s (moveHeadM t1 t2)
 -}
 groupsM' :: (Monad m, ToTransducerM m s, ToFoldM m f, ToTransductionsM' m t) 
          => s a b r 
-         -> t b c u -- ^ a machine that eats @u@ values and spits transductions
+         -> t b c u -- ^ 
          -> f     u v 
          -> TransductionM' m a c (r,v) 
 
