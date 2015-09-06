@@ -68,7 +68,7 @@ tests =
                     inputs = 
                         map fromString ["invalid \xc3\x28 sequence","xxx","zzz","___"]
                     fallbackfold =
-                        bisectM (chunkedSplitAt 4) id (transduceM ignore) (L.generalize L.list)
+                        bisectM (chunkedSplitAt 4) (reifyM id) ignore (L.generalize L.list)
                 in
                 do
                    r <- L.foldM (quiesceWith fallbackfold foldthatfails) inputs 

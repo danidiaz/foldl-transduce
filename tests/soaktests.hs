@@ -22,14 +22,14 @@ testGroupIO = fmap show $
     withFile "/dev/null" AppendMode $ \h1 ->
         withFile "/dev/null" AppendMode $ \h2 ->
             flip L.foldM (repeat "aabbccddeeffgghhiijj") $
-                foldsM (chunksOf 7) (L.generalize L.list) (L.handlesM traverse (toHandle h1)) *>
-                foldsM (chunksOf 3) (L.generalize L.list) (L.handlesM traverse (toHandle h2))
+                foldsM (chunksOf 7) L.list (L.handlesM traverse (toHandle h1)) *>
+                foldsM (chunksOf 3) L.list (L.handlesM traverse (toHandle h2))
 
 testPureGroup :: IO String
 testPureGroup = evaluate . show $
     flip L.fold (cycle [1,-1]) $
-        (+) <$> groups (chunksOf 3) (evenly (transduce (surround [0::Int] [0,0]))) L.sum <*>
-                groups (chunksOf 7) (evenly (transduce (surround [0,0] [0]))) L.sum
+        (+) <$> groups (chunksOf 3) (surround [0::Int] [0,0]) L.sum <*>
+                groups (chunksOf 7) (surround [0,0] [0]) L.sum
 
 testQuiesce :: IO String
 testQuiesce = evaluate . show $ 

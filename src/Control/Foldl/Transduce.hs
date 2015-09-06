@@ -34,24 +34,24 @@ module Control.Foldl.Transduce (
     ,   foldsM
     ,   foldsM'
         -- * Group operations
-    ,   Moore
-    ,   moveHead
-    ,   Infinite
     ,   ReifiedTransduction' (..)
-    ,   reified
-    ,   reified'
+    ,   reify
+    ,   reify'
+    ,   Moore(..)
+    ,   moveHead
+    ,   ToTransductions' (..)
     ,   groups
-        --
+    ,   bisect
     ,   groups'
         -- ** Monadic group operations
-    ,   MooreM
-    ,   moveHeadM
-    ,   InfiniteM
     ,   ReifiedTransductionM' (..)
-    ,   reifiedM
-    ,   reifiedM'
+    ,   reifyM
+    ,   reifyM'
+    ,   MooreM(..)
+    ,   moveHeadM
+    ,   ToTransductionsM' (..)
     ,   groupsM
-        --
+    ,   bisectM
     ,   groupsM'
         -- * Transducers
     ,   ignore
@@ -74,6 +74,8 @@ module Control.Foldl.Transduce (
     ,   quiesce
     ,   quiesceWith
     ,   hoistFold
+    ,   ToFold(..)
+    ,   ToFoldM(..)
         -- * Re-exports
         -- $reexports
     ,   module Data.Functor.Extend
@@ -152,11 +154,11 @@ type Transduction' a b r = forall x. Fold b x -> Fold a (r,x)
 -}
 newtype ReifiedTransduction' a b r = ReifiedTransduction' { getTransduction' :: Transduction' a b r }
 
-reified :: Transduction a b -> ReifiedTransduction' a b ()
-reified t = reified' (fmap (fmap ((,) ())) t)  
+reify :: Transduction a b -> ReifiedTransduction' a b ()
+reify t = reify' (fmap (fmap ((,) ())) t)  
 
-reified' :: Transduction' a b r -> ReifiedTransduction' a b r
-reified' = ReifiedTransduction' 
+reify' :: Transduction' a b r -> ReifiedTransduction' a b r
+reify' = ReifiedTransduction' 
 
 {-| A stateful process that transforms a stream of inputs into a stream of
     outputs, and may optionally demarcate groups in the stream of outputs.
@@ -216,6 +218,15 @@ instance ToTransducer Transducer where
 instance ToTransducer (TransducerM Identity) where
     toTransducer = _simplify
 
+class ToFold t where
+    toFold :: t i r -> Fold i r
+
+instance ToFold Fold where
+    toFold = id
+
+instance ToFold (FoldM Identity) where
+    toFold = L.simplify
+
 {-| Like 'Transduction', but works on monadic 'Fold's.		
 
 -}
@@ -231,11 +242,11 @@ type TransductionM' m a b r = forall x. FoldM m b x -> FoldM m a (r,x)
 -}
 newtype ReifiedTransductionM' m a b r = ReifiedTransductionM' { getTransductionM' :: TransductionM' m a b r }
 
-reifiedM :: Monad m => TransductionM m a b -> ReifiedTransductionM' m a b ()
-reifiedM t = reifiedM' (fmap (fmap ((,) ())) t)  
+reifyM :: Monad m => TransductionM m a b -> ReifiedTransductionM' m a b ()
+reifyM t = reifyM' (fmap (fmap ((,) ())) t)  
 
-reifiedM' :: TransductionM' m a b r -> ReifiedTransductionM' m a b r
-reifiedM' = ReifiedTransductionM' 
+reifyM' :: TransductionM' m a b r -> ReifiedTransductionM' m a b r
+reifyM' = ReifiedTransductionM' 
 
 {-| Like 'Transducer', but monadic.
 
@@ -278,6 +289,15 @@ instance (m ~ m') => ToTransducerM m (TransducerM m') where
 
 instance Monad m => ToTransducerM m Transducer where
     toTransducerM = _generalize
+
+class ToFoldM m t where
+    toFoldM :: t i r -> FoldM m i r
+
+instance (m ~ m') => ToFoldM m (FoldM m') where
+    toFoldM = id
+
+instance Monad m => ToFoldM m Fold where
+    toFoldM = L.generalize
 
 {-| Apply a 'Transducer' to a 'Fold', discarding the return value of the
     'Transducer'.		
@@ -365,7 +385,7 @@ data SurroundState = PrefixAdded | PrefixPending
     Used as a splitter, it puts the prefix, the original stream and
     the suffix in separate groups:
 
->>> L.fold (groups (surround "prefix" "suffix") (evenly (transduce (surround "[" "]"))) L.list) "middle"
+>>> L.fold (groups (surround "prefix" "suffix") (surround "[" "]") L.list) "middle"
 "[prefix][middle][suffix]"
 
 -}
@@ -551,12 +571,8 @@ newtype MooreM m a b u = MooreM { getMooreM :: Cofree ((->) u) (ReifiedTransduct
 moveHead :: (ToTransductions' t1,ToTransductions' t2) => t1 a b u -> t2 a b u -> Moore a b u 
 moveHead (toTransductions' -> Moore (theHead :< _)) (toTransductions' -> Moore theTail) = Moore (theHead :< const theTail)
 
-moveHeadM :: Monad m => MooreM m a b u -> MooreM m a b u -> MooreM m a b u 
+moveHeadM :: (Monad m, ToTransductionsM' m t1, ToTransductionsM' m t2) => t1 a b u -> t2 a b u -> MooreM m a b u 
 moveHeadM (toTransductionsM' -> MooreM (theHead :< _)) (toTransductionsM' -> MooreM theTail) = MooreM (theHead :< const theTail)
-
-type Infinite a b = Moore a b ()
-
-type InfiniteM m a b = MooreM m a b ()
 
 class ToTransductions' t where
     toTransductions' :: t a b u -> Moore a b u
@@ -565,7 +581,7 @@ instance ToTransductions' Moore where
     toTransductions' = id
 
 instance ToTransductions' Transducer where
-    toTransductions' t = toTransductions' (reified' (transduce' t))
+    toTransductions' t = toTransductions' (reify' (transduce' t))
 
 instance ToTransductions' ReifiedTransduction' where
     toTransductions' = Moore . coiter const
@@ -577,7 +593,10 @@ instance (m ~ m', Monad m') => ToTransductionsM' m (MooreM m') where
     toTransductionsM' = id
 
 instance (m ~ m', Monad m') => ToTransductionsM' m (TransducerM m') where
-    toTransductionsM' t = toTransductionsM' (reifiedM' (transduceM' t))
+    toTransductionsM' t = toTransductionsM' (reifyM' (transduceM' t))
+
+instance Monad m => ToTransductionsM' m Transducer where
+    toTransductionsM' (toTransducerM -> t) = toTransductionsM' (reifyM' (transduceM' t))
 
 instance (m ~ m', Monad m') => ToTransductionsM' m (ReifiedTransductionM' m') where
     toTransductionsM' = MooreM . coiter const
@@ -588,14 +607,14 @@ instance (m ~ m', Monad m') => ToTransductionsM' m (ReifiedTransductionM' m') wh
     
     The return value of the 'Transducer' is discarded.
 
->>> L.fold (groups (chunksOf 2) (evenly (transduce (surround "<" ">"))) L.list) "aabbccdd"
+>>> L.fold (groups (chunksOf 2) (surround "<" ">") L.list) "aabbccdd"
 "<aa><bb><cc><dd>"
 
 >>> :{ 
     let 
-      transducers = flip C.unfold 0 $ \i -> (,)
-         (ReifiedTransduction (transduce (surround (show i) []))) 
-         (Identity (succ i))
+      transducers = Moore $ flip C.unfold 0 $ \i -> (,)
+         (reify (transduce (surround (show i) []))) 
+         (const (succ i))
     in L.fold (groups (chunksOf 2) transducers L.list) "aabbccdd"
     :}
 "0aa1bb2cc3dd"
@@ -605,7 +624,14 @@ groups :: (ToTransducer s, ToTransductions' t)
        -> t b c () -- ^ infinite list of transductions
        -> Transduction a c 
 groups splitter transductions oldfold = 
-        fmap snd (groups' splitter L.mconcat transductions oldfold)
+        fmap snd (groups' splitter transductions L.mconcat oldfold)
+
+bisect :: (ToTransducer s, ToTransductions' h, ToTransductions' t)
+       => s a b r -- ^
+       -> h b c ()
+       -> t b c ()
+       -> Transduction a c
+bisect sp t1 t2 = groups sp (moveHead t1 t2)
 
 {-| Generalized version of 'groups' that preserves the return value of the
     'Transducer'.
@@ -616,18 +642,18 @@ groups splitter transductions oldfold =
 
 >>> :{ 
     let 
-        transductions = evenly' $ \f ->
-            transduce (surround "<" ">") (liftA2 (,) L.list f)
-    in  L.fold (groups' (chunksOf 2) L.list transductions L.list) "aabbccdd"
+        transductions = reify' $ 
+            \f -> transduce (surround "<" ">") (liftA2 (,) L.list f)
+    in  L.fold (groups' (chunksOf 2) transductions L.list L.list) "aabbccdd"
     :}
 (((),["<aa>","<bb>","<cc>","<dd>"]),"<aa><bb><cc><dd>")
 -}
-groups' :: (ToTransducer s, ToTransductions' t)
+groups' :: (ToTransducer s, ToFold f, ToTransductions' t)
         => s a b r
-        -> Fold u v -- ^ auxiliary 'Fold' that aggregates the @u@ values produced for each group
         -> t b c u -- ^ a machine that eats @u@ values and spits transductions
+        -> f     u v -- ^ auxiliary 'Fold' that aggregates the @u@ values produced for each group
         -> Transduction' a c (r,v) 
-groups' (toTransducer -> Transducer sstep sbegin sdone) somesummarizer (toTransductions' -> Moore (ReifiedTransduction' t0 :< somemachine)) somefold =
+groups' (toTransducer -> Transducer sstep sbegin sdone)  (toTransductions' -> Moore (ReifiedTransduction' t0 :< somemachine)) (toFold -> somesummarizer) somefold =
     Fold step (Quartet sbegin somesummarizer (t0 (duplicated somefold)) somemachine) done 
       where 
         step (Quartet sstate summarizer innerfold machine) i =
@@ -669,18 +695,26 @@ groupsM :: (Monad m, ToTransducerM m s, ToTransductionsM' m t)
                -> t b c ()
                -> TransductionM m a c
 groupsM splitter transductions oldfold = 
-        fmap snd (groupsM' splitter (L.generalize L.mconcat) transductions oldfold)
+        fmap snd (groupsM' splitter transductions L.mconcat oldfold)
+
+
+bisectM :: (Monad m, ToTransducerM m s, ToTransductionsM' m h, ToTransductionsM' m t)
+               => s a b r -- ^
+               -> h b c ()
+               -> t b c ()
+               -> TransductionM m a c
+bisectM s t1 t2 = groupsM s (moveHeadM t1 t2)
 
 {-| Monadic version of 'groups''.		
 
 -}
-groupsM' :: (Monad m, ToTransducerM m s, ToTransductionsM' m t) 
+groupsM' :: (Monad m, ToTransducerM m s, ToFoldM m f, ToTransductionsM' m t) 
          => s a b r 
-         -> FoldM m u v 
          -> t b c u -- ^ a machine that eats @u@ values and spits transductions
+         -> f     u v 
          -> TransductionM' m a c (r,v) 
 
-groupsM' (toTransducerM -> TransducerM sstep sbegin sdone) somesummarizer (toTransductionsM' -> MooreM (ReifiedTransductionM' t0 :< somemachine)) somefold =
+groupsM' (toTransducerM -> TransducerM sstep sbegin sdone) (toTransductionsM' -> MooreM (ReifiedTransductionM' t0 :< somemachine)) (toFoldM -> somesummarizer) somefold =
     FoldM step (sbegin >>= \x -> return (Quartet x somesummarizer (t0 (duplicated somefold)) somemachine)) done        
     where
         step (Quartet sstate summarizer innerfold machine) i = do
@@ -720,34 +754,46 @@ groupsM' (toTransducerM -> TransducerM sstep sbegin sdone) somesummarizer (toTra
 >>> L.fold (folds (chunksOf 3) L.sum L.list) [1..7]
 [6,15,7]
 -}
-folds :: ToTransducer t => t a b s -> Fold b c -> Transduction a c
-folds splitter f = groups splitter (fmap (const ()) (condense f))
+folds :: (ToTransducer t, ToFold f) 
+      => t a b s -- ^
+      -> f b c 
+      -> Transduction a c
+folds splitter (toFold -> f) = groups splitter (fmap (const ()) (condense f))
 
 {-| Like 'folds', but preserves the return value of the 'Transducer'.
 
 >>> L.fold (folds' (chunksOf 3) L.sum L.list) [1..7]
 ((),[6,15,7])
 -}
-folds' :: ToTransducer t => t a b s -> Fold b c -> Transduction' a c s
-folds' splitter innerfold somefold = 
-    fmap (bimap fst id) (groups' splitter L.mconcat innertrans somefold)
+folds' :: (ToTransducer t, ToFold f) 
+       => t a b s -- ^
+       -> f b c 
+       -> Transduction' a c s
+folds' splitter (toFold -> innerfold) somefold = 
+    fmap (bimap fst id) (groups' splitter innertrans L.mconcat somefold)
     where
-    innertrans = reified' $ \x -> fmap ((,) ()) (transduce (condense innerfold) x)
+    innertrans = reify' $ \x -> fmap ((,) ()) (transduce (condense innerfold) x)
 
 {-| Monadic version of 'folds'.		
 
 -}
-foldsM :: (Applicative m, Monad m, ToTransducerM m t) => t a b s -> FoldM m b c -> TransductionM m a c
-foldsM splitter f = groupsM splitter (fmap (const ()) (condenseM f))
+foldsM :: (Applicative m, Monad m, ToTransducerM m t, ToFoldM m f) 
+       => t a b s -- ^
+       -> f b c 
+       -> TransductionM m a c
+foldsM splitter (toFoldM -> f) = groupsM splitter (fmap (const ()) (condenseM f))
 
 {-| Monadic version of 'folds''.		
 
 -}
-foldsM' :: (Applicative m,Monad m, ToTransducerM m t) => t a b s -> FoldM m b c -> TransductionM' m a c s
-foldsM' splitter innerfold somefold = 
-    fmap (bimap fst id) (groupsM' splitter (L.generalize L.mconcat) innertrans somefold)
+foldsM' :: (Applicative m,Monad m, ToTransducerM m t, ToFoldM m f) 
+        => t a b s -- ^
+        -> f b c 
+        -> TransductionM' m a c s
+foldsM' splitter (toFoldM -> innerfold) somefold = 
+    fmap (bimap fst id) (groupsM' splitter innertrans L.mconcat somefold)
     where
-    innertrans = reifiedM' $ \x -> fmap ((,) ()) (transduceM (condenseM innerfold) x)
+    innertrans = reifyM' $ \x -> fmap ((,) ()) (transduceM (condenseM innerfold) x)
 
 ------------------------------------------------------------------------------
 
@@ -756,7 +802,7 @@ foldsM' splitter innerfold somefold =
 >>> L.fold (folds (chunksOf 2) L.list L.list) [1..7]
 [[1,2],[3,4],[5,6],[7]]
 
->>> L.fold (groups (chunksOf 2) (evenly (transduce (surround [] [0]))) L.list) [1..7]
+>>> L.fold (groups (chunksOf 2) (surround [] [0]) L.list) [1..7]
 [1,2,0,3,4,0,5,6,0,7,0]
 -}
 chunksOf :: Int -> Transducer a a ()
@@ -769,7 +815,7 @@ chunksOf groupSize = Transducer step groupSize done
 
 {-| Splits the stream at a given position.		
 
->>> L.fold (bisect (splitAt 2) (transduce ignore) id L.list) [1..5]
+>>> L.fold (bisect (splitAt 2) ignore (reify id) L.list) [1..5]
 [3,4,5]
 
 -}
@@ -789,7 +835,7 @@ splitAt howmany =
 {-| Similar to `splitAt`, but works with streams of "chunked" data like
     bytestrings, texts, vectors, lists of lists...		
 
->>> L.fold (bisect (chunkedSplitAt 7) (transduce ignore) id L.list) [[1..5],[6..9]]
+>>> L.fold (bisect (chunkedSplitAt 7) ignore (reify id) L.list) [[1..5],[6..9]]
 [[8,9]]
 
 -}
@@ -818,7 +864,7 @@ data SplitWhenWhenState =
 
 {-| 		
 
->>> L.fold (bisect (splitWhen (>3)) id (transduce ignore) L.list) [1..5]
+>>> L.fold (bisect (splitWhen (>3)) (reify id) ignore L.list) [1..5]
 [1,2,3]
 -}
 splitWhen :: (a -> Bool) -> Transducer a a ()
@@ -836,7 +882,7 @@ splitWhen predicate =
 {-| Puts the last element of the input stream (if it exists) in a separate
     group.
 
->>> L.fold (bisect splitLast id (transduce ignore) L.list) [1..5]
+>>> L.fold (bisect splitLast (reify id) ignore L.list) [1..5]
 [1,2,3,4]
 -}
 splitLast :: Transducer a a (Maybe a)

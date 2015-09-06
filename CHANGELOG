@@ -1,3 +1,12 @@
+# 0.4.0.0
+
+- Changed order of parameters for groups' and groupsM'. Hopefully the new one
+  is clearer.
+- It was annoying to use "evenly (transduce ...)" every time. Added new
+  ToTransductions' typeclass for types that can be converted to an infinite
+  list of transductions.
+- Added ToFold typeclass as well.
+
 # 0.3.0.0
 
 - Transducers can now delimit segments in the done function, too.

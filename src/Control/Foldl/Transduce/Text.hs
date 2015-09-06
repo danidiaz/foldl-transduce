@@ -198,10 +198,10 @@ stripEnd = L.Transducer step [] done
 
 {-| Splits a stream of text into lines, removing the newlines.
 
->>> L.fold (L.groups lines (evenly (transduce (surround [T.pack "x"] []))) L.list) (map T.pack ["line 1\n line 2\n"])
+>>> L.fold (L.groups lines (surround [T.pack "x"] []) L.list) (map T.pack ["line 1\n line 2\n"])
 ["x","line 1","x"," line 2"]
 
->>> L.fold (L.groups lines (evenly (transduce newline)) L.list) (map T.pack ["line 1\n line 2\n"])
+>>> L.fold (L.groups lines newline L.list) (map T.pack ["line 1\n line 2\n"])
 ["line 1","\n"," line 2","\n"]
 
     Used with 'L.transduce', it simply removes newlines:
