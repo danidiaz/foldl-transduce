@@ -641,10 +641,9 @@ instance (m ~ m', Monad m') => ToTransductionsM' m (ReifiedTransductionM' m') wh
 
 >>> :{ 
     let 
-      transducers = Moore $ flip C.unfold 0 $ \i -> (,)
-         (reify (transduce (surround (show i) []))) 
-         (const (succ i))
-    in L.fold (groups (chunksOf 2) transducers L.list) "aabbccdd"
+      transductions = Moore (C.unfold (\i ->
+         (reify (transduce (surround (show i) [])), \_ -> succ i)) 0)
+    in L.fold (groups (chunksOf 2) transductions L.list) "aabbccdd"
     :}
 "0aa1bb2cc3dd"
 -}
@@ -671,18 +670,22 @@ bisect sp t1 t2 = groups sp (moveHead t1 t2)
 
 >>> :{ 
     let 
-        transductions = reify' $ 
-            \f -> transduce (surround "<" ">") (liftA2 (,) L.list f)
+        transductions = 
+            reify' (\f -> transduce (surround "<" ">") ((,) <$> L.list <*> f))
     in  L.fold (groups' (chunksOf 2) transductions L.list L.list) "aabbccdd"
     :}
 (((),["<aa>","<bb>","<cc>","<dd>"]),"<aa><bb><cc><dd>")
 -}
-groups' :: (ToTransducer s, ToFold f, ToTransductions' t)
+groups' :: (ToTransducer s, ToTransductions' t, ToFold f)
         => s a b r -- ^ 'Transducer' working as a splitter. 
         -> t b c u -- ^ machine that eats @u@ values and spits transductions
         -> f     u v -- ^ auxiliary 'Fold' that aggregates the @u@ values produced for each group
         -> Transduction' a c (r,v) 
-groups' (toTransducer -> Transducer sstep sbegin sdone)  (toTransductions' -> Moore (ReifiedTransduction' t0 :< somemachine)) (toFold -> somesummarizer) somefold =
+groups' (toTransducer -> Transducer sstep sbegin sdone) 
+        (toTransductions' -> Moore (ReifiedTransduction' t0 :< somemachine)) 
+        (toFold -> somesummarizer) 
+        somefold 
+        =
     Fold step (Quartet sbegin somesummarizer (t0 (duplicated somefold)) somemachine) done 
       where 
         step (Quartet sstate summarizer innerfold machine) i =
@@ -696,15 +699,6 @@ groups' (toTransducer -> Transducer sstep sbegin sdone)  (toTransductions' -> Mo
            in
            Quartet sstate' summarizer' innerfold' machine'
         
-        step' (summarizer_,innerfold_,machine_) somesplit = 
-           let (u,resetted,nextmachine) = reset machine_ innerfold_
-           in  (L.fold (duplicated summarizer_) [u], feed resetted somesplit,nextmachine)
-
-        feed = L.fold . duplicated
-        reset machine (Fold _ fstate fdone) = 
-            let (u,nextfold) = fdone fstate
-                ReifiedTransduction' t1 :< nextmachine = machine u
-            in  (u,t1 (duplicated nextfold),nextmachine)
         done (Quartet sstate summarizer innerfold machine) = 
             let 
                 (s,oldSplit,newSplits) = sdone sstate
@@ -715,6 +709,18 @@ groups' (toTransducer -> Transducer sstep sbegin sdone)  (toTransductions' -> Mo
                    newSplits
                 (u,finalfold) = extract innerfold'
             in  ((s,L.fold summarizer' [u]),extract finalfold)
+
+        step' (summarizer_,innerfold_,machine_) somesplit = 
+           let (u,resetted,nextmachine) = reset machine_ innerfold_
+           in  (L.fold (duplicated summarizer_) [u], feed resetted somesplit,nextmachine)
+
+        feed = L.fold . duplicated
+
+        reset machine (Fold _ fstate fdone) = 
+            let (u,nextfold) = fdone fstate
+                ReifiedTransduction' t1 :< nextmachine = machine u
+            in  (u,t1 (duplicated nextfold),nextmachine)
+
 
 {-| Monadic version of 'groups'.		
 
@@ -740,13 +746,16 @@ bisectM s t1 t2 = groupsM s (moveHeadM t1 t2)
 {-| Monadic version of 'groups''.		
 
 -}
-groupsM' :: (Monad m, ToTransducerM m s, ToFoldM m f, ToTransductionsM' m t) 
+groupsM' :: (Monad m, ToTransducerM m s, ToTransductionsM' m t, ToFoldM m f) 
          => s a b r 
          -> t b c u -- ^ 
          -> f     u v 
          -> TransductionM' m a c (r,v) 
-
-groupsM' (toTransducerM -> TransducerM sstep sbegin sdone) (toTransductionsM' -> MooreM (ReifiedTransductionM' t0 :< somemachine)) (toFoldM -> somesummarizer) somefold =
+groupsM' (toTransducerM -> TransducerM sstep sbegin sdone) 
+         (toTransductionsM' -> MooreM (ReifiedTransductionM' t0 :< somemachine)) 
+         (toFoldM -> somesummarizer) 
+         somefold 
+         =
     FoldM step (sbegin >>= \x -> return (Quartet x somesummarizer (t0 (duplicated somefold)) somemachine)) done        
     where
         step (Quartet sstate summarizer innerfold machine) i = do
@@ -754,6 +763,15 @@ groupsM' (toTransducerM -> TransducerM sstep sbegin sdone) (toTransductionsM' ->
             innerfold' <- feed innerfold oldSplit
             (summarizer',innerfold'',machine') <- foldlM step' (summarizer,innerfold',machine) newSplits
             return $! Quartet sstate' summarizer' innerfold'' machine'
+
+        done (Quartet sstate summarizer innerfold machine) = do
+            (s,oldSplit,newSplits) <- sdone sstate
+            innerfold' <- feed innerfold oldSplit
+            (summarizer',innerfold'',_) <- foldlM step' (summarizer,innerfold',machine) newSplits
+            (u,finalfold) <- L.foldM innerfold'' []
+            v <- L.foldM summarizer' [u]
+            r <- L.foldM finalfold []
+            return ((s,v),r)
 
         step' = \(summarizer,innerfold,machine) is -> do
             (u,innerfold',machine') <- reset machine innerfold 
@@ -768,15 +786,6 @@ groupsM' (toTransducerM -> TransducerM sstep sbegin sdone) (toTransductionsM' ->
            let 
                ReifiedTransductionM' t1 :< nextmachine = machine u
            return (u,t1 (duplicated nextfold),nextmachine)
-
-        done (Quartet sstate summarizer innerfold machine) = do
-            (s,oldSplit,newSplits) <- sdone sstate
-            innerfold' <- feed innerfold oldSplit
-            (summarizer',innerfold'',_) <- foldlM step' (summarizer,innerfold',machine) newSplits
-            (u,finalfold) <- L.foldM innerfold'' []
-            v <- L.foldM summarizer' [u]
-            r <- L.foldM finalfold []
-            return ((s,v),r)
 
 {-| Summarizes each of the groups demarcated by the 'Transducer' using a
     'Fold'. 
