@@ -683,36 +683,36 @@ groups' :: (ToTransducer s, ToTransductions' t, ToFold f)
         -> Transduction' a c (r,v) 
 groups' (toTransducer -> Transducer sstep sbegin sdone) 
         (toTransductions' -> Moore (ReifiedTransduction' t0 :< somemachine)) 
-        (toFold -> somesummarizer) 
+        (toFold -> Fold astep abegin adone) 
         somefold 
         =
-    Fold step (Quartet sbegin somesummarizer (t0 (duplicated somefold)) somemachine) done 
+    Fold step (Quartet sbegin somemachine abegin (t0 (duplicated somefold))) done 
       where 
-        step (Quartet sstate summarizer innerfold machine) i =
+        step (Quartet sstate machine astate innerfold) i =
            let 
-               (sstate', oldSplit, newSplits) = sstep sstate i
-               (summarizer',innerfold',machine') = 
+               (sstate',oldSplit,newSplits) = sstep sstate i
+               (machine',astate',innerfold') = 
                    foldl' 
                    step'
-                   (summarizer, feed innerfold oldSplit,machine) 
+                   (machine,astate,feed innerfold oldSplit) 
                    newSplits
            in
-           Quartet sstate' summarizer' innerfold' machine'
+           Quartet sstate' machine' astate' innerfold' 
         
-        done (Quartet sstate summarizer innerfold machine) = 
+        done (Quartet sstate machine astate innerfold) = 
             let 
                 (s,oldSplit,newSplits) = sdone sstate
-                (summarizer',innerfold',_) = 
+                (_,astate',innerfold') = 
                    foldl' 
                    step'
-                   (summarizer,feed innerfold oldSplit,machine) 
+                   (machine,astate,feed innerfold oldSplit) 
                    newSplits
                 (u,finalfold) = extract innerfold'
-            in  ((s,L.fold summarizer' [u]),extract finalfold)
+            in  ((s,adone (astep astate' u)),extract finalfold)
 
-        step' (summarizer_,innerfold_,machine_) somesplit = 
+        step' (machine_,astate,innerfold_) somesplit = 
            let (u,resetted,nextmachine) = reset machine_ innerfold_
-           in  (L.fold (duplicated summarizer_) [u], feed resetted somesplit,nextmachine)
+           in  (nextmachine,astep astate u,feed resetted somesplit)
 
         feed = L.fold . duplicated
 
@@ -753,31 +753,35 @@ groupsM' :: (Monad m, ToTransducerM m s, ToTransductionsM' m t, ToFoldM m f)
          -> TransductionM' m a c (r,v) 
 groupsM' (toTransducerM -> TransducerM sstep sbegin sdone) 
          (toTransductionsM' -> MooreM (ReifiedTransductionM' t0 :< somemachine)) 
-         (toFoldM -> somesummarizer) 
+         (toFoldM -> FoldM astep abegin adone) 
          somefold 
          =
-    FoldM step (sbegin >>= \x -> return (Quartet x somesummarizer (t0 (duplicated somefold)) somemachine)) done        
+    FoldM step 
+          (do sbegin' <- sbegin
+              abegin' <- abegin
+              return (Quartet sbegin' somemachine abegin' (t0 (duplicated somefold))))
+          done        
     where
-        step (Quartet sstate summarizer innerfold machine) i = do
-            (sstate', oldSplit, newSplits) <- sstep sstate i 
+        step (Quartet sstate machine astate innerfold) i = do
+            (sstate',oldSplit, newSplits) <- sstep sstate i 
             innerfold' <- feed innerfold oldSplit
-            (summarizer',innerfold'',machine') <- foldlM step' (summarizer,innerfold',machine) newSplits
-            return $! Quartet sstate' summarizer' innerfold'' machine'
+            (machine',astate',innerfold'') <- foldlM step' (machine,astate,innerfold') newSplits
+            return $! Quartet sstate' machine' astate' innerfold'' 
 
-        done (Quartet sstate summarizer innerfold machine) = do
+        done (Quartet sstate machine astate innerfold) = do
             (s,oldSplit,newSplits) <- sdone sstate
             innerfold' <- feed innerfold oldSplit
-            (summarizer',innerfold'',_) <- foldlM step' (summarizer,innerfold',machine) newSplits
+            (_,astate',innerfold'') <- foldlM step' (machine,astate,innerfold') newSplits
             (u,finalfold) <- L.foldM innerfold'' []
-            v <- L.foldM summarizer' [u]
+            v <- adone =<< astep astate' u
             r <- L.foldM finalfold []
             return ((s,v),r)
 
-        step' = \(summarizer,innerfold,machine) is -> do
+        step' (machine,astate,innerfold) is = do
             (u,innerfold',machine') <- reset machine innerfold 
-            summarizer' <- L.foldM (duplicated summarizer) [u]
+            astate' <- astep astate u
             innerfold'' <- feed innerfold' is
-            return $! (summarizer',innerfold'',machine') 
+            return $! (machine',astate',innerfold'') 
 
         feed = L.foldM . duplicated
 
