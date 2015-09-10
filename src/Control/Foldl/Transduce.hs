@@ -149,7 +149,7 @@ type Transduction a b = forall x. Fold b x -> Fold a x
 -}
 type Transduction' a b r = forall x. Fold b x -> Fold a (r,x)
 
-{-| Helper for storing a 'ReifiedTransduction' safely on a container.		
+{-| Helper for storing a 'ReifiedTransduction'' safely on a container.		
 
 -}
 newtype ReifiedTransduction' a b r = ReifiedTransduction' { getTransduction' :: Transduction' a b r }
@@ -177,8 +177,8 @@ reify' = ReifiedTransduction'
       current step. 'Transducer's that do not perform grouping never return anything
       other than @[]@ here. In effect, they treat the whole stream as a single group.
 
-    The extraction function returns the 'Transducer's own result value, as
-    well as any pending output.
+    The extraction function returns the 'Transducer's own result value, along with any
+    pending output.
 -}
 data Transducer i o r
      = forall x. Transducer (x -> i -> (x,[o],[[o]])) x (x -> (r,[o],[[o]]))
@@ -640,9 +640,8 @@ instance (m ~ m', Monad m') => ToTransductionsM' m (ReifiedTransductionM' m') wh
 "<aa><bb><cc><dd>"
 
 >>> :{ 
-    let 
-      transductions = Moore (C.unfold (\i ->
-         (reify (transduce (surround (show i) [])), \_ -> succ i)) 0)
+    let transductions = Moore (C.unfold (\i ->
+          (reify (transduce (surround (show i) [])), \_ -> succ i)) 0)
     in L.fold (groups (chunksOf 2) transductions L.list) "aabbccdd"
     :}
 "0aa1bb2cc3dd"
@@ -654,6 +653,14 @@ groups :: (ToTransducer s, ToTransductions' t)
 groups splitter transductions oldfold = 
         fmap snd (groups' splitter transductions L.mconcat oldfold)
 
+{-| Use a different 'Transduction' for the first detected group.		
+
+>>> :{ 
+    let drop n = bisect (splitAt n) ignore (reify id)
+    in L.fold (drop 2 L.list) "aabbccdd"
+    :}
+"bbccdd"
+-}
 bisect :: (ToTransducer s, ToTransductions' h, ToTransductions' t)
        => s a b r -- ^ 'Transducer' working as a splitter.
        -> h b c () -- ^ Machine to process the first group
@@ -669,10 +676,9 @@ bisect sp t1 t2 = groups sp (moveHead t1 t2)
 
 
 >>> :{ 
-    let 
-        transductions = 
-            reify' (\f -> transduce (surround "<" ">") ((,) <$> L.list <*> f))
-    in  L.fold (groups' (chunksOf 2) transductions L.list L.list) "aabbccdd"
+    let transductions = 
+          reify' (\f -> transduce (surround "<" ">") ((,) <$> L.list <*> f))
+    in L.fold (groups' (chunksOf 2) transductions L.list L.list) "aabbccdd"
     :}
 (((),["<aa>","<bb>","<cc>","<dd>"]),"<aa><bb><cc><dd>")
 -}
@@ -800,7 +806,7 @@ groupsM' (toTransducerM -> TransducerM sstep sbegin sdone)
 [6,15,7]
 -}
 folds :: (ToTransducer t, ToFold f) 
-      => t a b s -- ^
+      => t a b s -- ^ 'Transducer' working as a splitter.
       -> f b c 
       -> Transduction a c
 folds splitter (toFold -> f) = groups splitter (fmap (const ()) (condense f))
@@ -811,7 +817,7 @@ folds splitter (toFold -> f) = groups splitter (fmap (const ()) (condense f))
 ((),[6,15,7])
 -}
 folds' :: (ToTransducer t, ToFold f) 
-       => t a b s -- ^
+       => t a b s -- ^ 'Transducer' working as a splitter.
        -> f b c 
        -> Transduction' a c s
 folds' splitter (toFold -> innerfold) somefold = 
