@@ -1,19 +1,33 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ViewPatterns #-}
 
-module Control.Foldl.ByteString.IO (
+-- |
+--
+-- Pour handles into folds,
+-- write to handles using folds. 
+module Control.Foldl.Transduce.ByteString.IO (
         driveHandle
     ,   toHandle
     ,   toHandleBuilder  
     ) where
 
 import qualified Control.Foldl as L
+import Control.Foldl.Transduce 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Builder as B
 import Control.Monad.IO.Class
 import System.IO
 
-driveHandle :: MonadIO m => L.FoldM m B.ByteString r -> Int -> Handle -> m r 
-driveHandle f chunkSize handle = L.impurely consumeFunc f (B.hGetSome handle chunkSize,hIsEOF handle)
+{-| Feed a fold with bytes read from a 'Handle'.
+
+-}
+driveHandle :: (MonadIO m,ToFoldM m f) 
+            => f B.ByteString r 
+            -> Int -- ^ max chunk size
+            -> Handle 
+            -> m r 
+driveHandle (toFoldM -> f) chunkSize handle = 
+    L.impurely consumeFunc f (B.hGetSome handle chunkSize,hIsEOF handle)
     where
         -- adapted from foldM in Pipes.Prelude
         consumeFunc step begin done (readChunk,checkEOF) = do

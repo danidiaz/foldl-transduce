@@ -1,5 +1,8 @@
 {-# LANGUAGE PackageImports #-}
 
+-- |
+--
+-- Count characters, words an lines of the file passed as commad line argument.
 module Main (
         main
     ) where
@@ -11,7 +14,7 @@ import qualified "text" Data.Text as T
 import qualified "foldl" Control.Foldl as L
 import "foldl-transduce" Control.Foldl.Transduce
 import "foldl-transduce" Control.Foldl.Transduce.Text (utf8lenient,words,lines)
-import "foldl-transduce" Control.Foldl.ByteString.IO (driveHandle)
+import "foldl-transduce" Control.Foldl.Transduce.ByteString.IO (driveHandle)
 
 import System.IO
 import System.Environment (getArgs)
@@ -28,5 +31,5 @@ main :: IO ()
 main = do
     filename:_ <- getArgs 
     count <- withFile filename ReadMode $ 
-        driveHandle (L.generalize (transduce utf8lenient multicount)) 2048
+        driveHandle (transduce utf8lenient multicount) 2048
     print count 
