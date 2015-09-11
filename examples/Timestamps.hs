@@ -1,13 +1,21 @@
 {-# LANGUAGE PackageImports #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- |
 --
--- Count characters, words an lines of the file passed as commad line argument.
+-- Read lines from stdin and echo them in stderr, adding a timestamp to each
+-- one.
+--
+-- To test this example, better redirect standard error to a file:
+--
+--    examples/Timestamps 2> /tmp/err.log
+-- 
+-- and check the file after having typed a few lines.
 module Main (
         main
     ) where
 
-import Prelude hiding (words,lines)
+import Prelude hiding (lines)
 
 import Control.Monad
 import qualified "text" Data.Text as T
@@ -20,19 +28,15 @@ import "foldl-transduce" Control.Foldl.Transduce.Text (utf8lenient,lines,newline
 import "foldl-transduce" Control.Foldl.Transduce.ByteString.IO (driveHandle,toHandle)
 
 import System.IO
-import System.Environment (getArgs)
 
 timestamp :: IO [T.Text]
-timestamp = liftM (return . T.pack . formatTime defaultTimeLocale "%M m %S s ") getCurrentTime 
+timestamp = liftM (return . T.pack . formatTime defaultTimeLocale "%M m %S s | ") getCurrentTime 
 
 main :: IO ()
 main = 
-  do
-    driveHandle (transduceM utf8lenient (timestamped (L.premapM T.encodeUtf8 (toHandle stderr)))) 2048 stdin
+    driveHandle (withEncodeDecode addTimestamps (toHandle stderr)) 2048 stdin
   where
-    timestamped = groupsM lines $ reifyM $ \f ->
-        transduceM (surroundIO timestamp (return [])) (transduceM newline f)
-        
-
-
+    withEncodeDecode t f = 
+        (transduceM utf8lenient (t (L.premapM T.encodeUtf8 f)))
+    addTimestamps = groupsM lines (surroundIO timestamp (return ["\n"]))
 
