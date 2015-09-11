@@ -37,6 +37,6 @@ main =
     driveHandle (withEncodeDecode addTimestamps (toHandle stderr)) 2048 stdin
   where
     withEncodeDecode t f = 
-        (transduceM utf8lenient (t (L.premapM T.encodeUtf8 f)))
+        transduceM utf8lenient (t (L.premapM T.encodeUtf8 f))
     addTimestamps = groupsM lines (surroundIO timestamp (return ["\n"]))
 
