@@ -74,6 +74,7 @@ module Control.Foldl.Transduce (
     ,   quiesce
     ,   quiesceWith
     ,   hoistFold
+    ,   unit
     ,   ToFold(..)
     ,   ToFoldM(..)
         -- * Re-exports
@@ -570,6 +571,12 @@ quiesceWith fallbackFold (FoldM step initial done) =
                         alternativeResult <- L.foldM fallbackFold []
                         return (Left (e,alternativeResult))
                     Right x'' -> return (Right x'')
+
+{-| The "do-nothing" fold.		
+
+-}
+unit :: Fold a ()
+unit = pure () 
 
 ------------------------------------------------------------------------------
 
