@@ -31,3 +31,8 @@ Grouping fold-side has limitations as well:
 
 - You have more flexibility in pipes-group to decide how to delimit and fold
   the next group based on previous results.
+
+
+## Where can I find working examples for this library?
+
+In the [examples](https://github.com/danidiaz/foldl-transduce/tree/master/examples) folder of the repo.
