@@ -1,8 +1,11 @@
+# 0.4.2.0
+
+- Added "trip" fold.
+
 # 0.4.1.0
 
 - Added module Control.Foldl.Transduce.ByteString.IO, to
   avoid having to depend on other packages for simple I/O tasks.
-
 - Added "unit" fold.
 
 # 0.4.0.0

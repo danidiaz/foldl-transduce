@@ -75,6 +75,7 @@ module Control.Foldl.Transduce (
     ,   quiesceWith
     ,   hoistFold
     ,   unit
+    ,   trip
     ,   ToFold(..)
     ,   ToFoldM(..)
         -- * Re-exports
@@ -578,6 +579,13 @@ quiesceWith fallbackFold (FoldM step initial done) =
 unit :: Fold a ()
 unit = pure () 
 
+{-| A fold that fails if it receives any input at all. The received input is
+    used as the error.		
+
+-}
+trip :: Monad m => FoldM (ExceptT a m) a ()
+trip = FoldM (\_ x -> throwE x) (return ()) (\_ -> return mempty)
+
 ------------------------------------------------------------------------------
 
 {-| An unending machine that eats @u@ values and returns 
@@ -658,7 +666,7 @@ groups :: (ToTransducer s, ToTransductions' t)
        -> t b c () -- ^ infinite list of transductions
        -> Transduction a c 
 groups splitter transductions oldfold = 
-        fmap snd (groups' splitter transductions L.mconcat oldfold)
+        fmap snd (groups' splitter transductions unit oldfold)
 
 {-| Use a different 'Transduction' for the first detected group.		
 
@@ -743,7 +751,7 @@ groupsM :: (Monad m, ToTransducerM m s, ToTransductionsM' m t)
                -> t b c ()
                -> TransductionM m a c
 groupsM splitter transductions oldfold = 
-        fmap snd (groupsM' splitter transductions L.mconcat oldfold)
+        fmap snd (groupsM' splitter transductions unit oldfold)
 
 
 {-| Monadic version of 'bisect'.		
@@ -828,7 +836,7 @@ folds' :: (ToTransducer t, ToFold f)
        -> f b c 
        -> Transduction' a c s
 folds' splitter (toFold -> innerfold) somefold = 
-    fmap (bimap fst id) (groups' splitter innertrans L.mconcat somefold)
+    fmap (bimap fst id) (groups' splitter innertrans unit somefold)
     where
     innertrans = reify' $ \x -> fmap ((,) ()) (transduce (condense innerfold) x)
 
@@ -849,7 +857,7 @@ foldsM' :: (Applicative m,Monad m, ToTransducerM m t, ToFoldM m f)
         -> f b c 
         -> TransductionM' m a c s
 foldsM' splitter (toFoldM -> innerfold) somefold = 
-    fmap (bimap fst id) (groupsM' splitter innertrans L.mconcat somefold)
+    fmap (bimap fst id) (groupsM' splitter innertrans unit somefold)
     where
     innertrans = reifyM' $ \x -> fmap ((,) ()) (transduceM (condenseM innerfold) x)
 
