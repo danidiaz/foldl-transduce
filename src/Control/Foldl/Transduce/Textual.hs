@@ -4,7 +4,10 @@
 --
 -- This module has transducers that work on 'Text' and other text-like types.
 module Control.Foldl.Transduce.Textual (
+        -- * Splitters
         textualSplit
+    ,   textualBreak
+        -- * Deprecated
     ,   textualSplitWhen
     ) where
 
@@ -21,6 +24,7 @@ import Control.Foldl.Transduce
 >>> import Control.Foldl.Transduce
 
 -}
+
 
 {-| 
 
@@ -40,14 +44,13 @@ data SplitWhenWhenState =
       SplitWhenConditionEncountered 
     | SplitWhenConditionPending
 
-
 {-| 		
 
->>> L.fold (bisect (textualSplitWhen (=='.')) (reify id) ignore L.list) ["aa","bb.bb","cc"]
+>>> L.fold (bisect (textualBreak (=='.')) (reify id) ignore L.list) ["aa","bb.bb","cc"]
 ["aa","bb"]
 -}
-textualSplitWhen :: MT.TextualMonoid m => (Char -> Bool) -> Transducer m m ()
-textualSplitWhen predicate = 
+textualBreak :: MT.TextualMonoid m => (Char -> Bool) -> Transducer m m ()
+textualBreak predicate = 
     Transducer step SplitWhenConditionPending done 
     where
         step SplitWhenConditionPending (MT.break (const False) predicate -> (i0,i1)) = 
@@ -57,4 +60,8 @@ textualSplitWhen predicate =
         step SplitWhenConditionEncountered i = 
                (SplitWhenConditionEncountered,[i],[])
         done = mempty
+
+{-# DEPRECATED textualSplitWhen "use textualBreak instead" #-}
+textualSplitWhen :: MT.TextualMonoid m => (Char -> Bool) -> Transducer m m ()
+textualSplitWhen = textualBreak 
 

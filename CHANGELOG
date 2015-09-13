@@ -1,3 +1,7 @@
+# 0.4.3.0
+- deprecated splitWhen in favor of break
+- deprecated textualSplitWhen in favor of textualBreak
+
 # 0.4.2.0
 
 - Added "trip" fold.

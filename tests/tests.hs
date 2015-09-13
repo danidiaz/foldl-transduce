@@ -48,17 +48,17 @@ tests =
                     (L.fold (folds (chunksOf 3) L.list L.list) [1..7])
         ]
         ,
-        testGroup "textualSplitWhen" $ 
+        testGroup "textualBreak" $ 
         [
             testCase "beginwithdot" $
                 assertEqual mempty
                     ".bb"
-                    (L.fold (bisect (textualSplitWhen (=='.')) ignore (reify id) L.mconcat) ["aa",".bb"])
+                    (L.fold (bisect (textualBreak (=='.')) ignore (reify id) L.mconcat) ["aa",".bb"])
             ,
             testCase "endwithdot" $
                 assertEqual mempty
                     "."
-                    (L.fold (bisect (textualSplitWhen (=='.')) ignore (reify id) L.mconcat) ["aa","bb."])
+                    (L.fold (bisect (textualBreak (=='.')) ignore (reify id) L.mconcat) ["aa","bb."])
         ]   
         ,
         testGroup "newline" $ 

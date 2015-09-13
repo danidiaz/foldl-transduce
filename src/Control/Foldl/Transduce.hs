@@ -61,8 +61,8 @@ module Control.Foldl.Transduce (
     ,   chunksOf
     ,   splitAt
     ,   chunkedSplitAt
-    ,   splitWhen
     ,   splitLast
+    ,   break
     ,   chunkedStripPrefix
         -- * Transducer utilities
     ,   foldify
@@ -83,9 +83,11 @@ module Control.Foldl.Transduce (
     ,   module Data.Functor.Extend
     ,   module Control.Foldl
     ,   module Control.Comonad.Cofree
+        -- * Deprecated
+    ,   splitWhen
     ) where
 
-import Prelude hiding (take,drop,splitAt,dropWhile)
+import Prelude hiding (splitAt,break)
 
 import Data.Bifunctor
 import Data.Monoid
@@ -112,7 +114,7 @@ import Control.Foldl.Transduce.Internal (Pair(..),Quartet(..),_1of3)
 >>> import Control.Foldl.Transduce
 >>> import Control.Applicative
 >>> import qualified Control.Comonad.Cofree as C
->>> import Prelude hiding (splitAt,takeWhile,dropWhile)
+>>> import Prelude hiding (splitAt,break)
 
 -}
 
@@ -930,11 +932,11 @@ data SplitWhenWhenState =
 
 {-| 		
 
->>> L.fold (bisect (splitWhen (>3)) (reify id) ignore L.list) [1..5]
+>>> L.fold (bisect (break (>3)) (reify id) ignore L.list) [1..5]
 [1,2,3]
 -}
-splitWhen :: (a -> Bool) -> Transducer a a ()
-splitWhen predicate = 
+break :: (a -> Bool) -> Transducer a a ()
+break predicate = 
     Transducer step SplitWhenConditionPending done 
     where
         step SplitWhenConditionPending i = 
@@ -1001,3 +1003,8 @@ chunkedStripPrefix (filter (not . NM.null) . toList -> chunks) =
 {- $reexports
 
 -}
+
+
+{-# DEPRECATED splitWhen "use break instead" #-}
+splitWhen :: (a -> Bool) -> Transducer a a ()
+splitWhen = break
