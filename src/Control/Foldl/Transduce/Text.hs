@@ -19,6 +19,9 @@ module Control.Foldl.Transduce.Text (
         -- * Splitters
     ,   lines
     ,   words
+        -- * Re-exports
+        -- $reexports
+    ,   module Control.Foldl.Transduce.Textual
     ) where
 
 import Prelude hiding (lines,words)
@@ -35,6 +38,7 @@ import Control.Monad.Trans.Except
 import Control.Monad.IO.Class
 import Control.Exception.Base 
 import qualified Control.Foldl.Transduce as L
+import Control.Foldl.Transduce.Textual
 import Control.Foldl.Transduce.Internal (Pair(..))
 
 {- $setup
@@ -271,3 +275,8 @@ words = L.Transducer step NoLastChar done
                 in (nextstate,oldgroup,newgroups)
         done _ = ((),[],[])
 
+------------------------------------------------------------------------------
+
+{- $reexports
+
+-}

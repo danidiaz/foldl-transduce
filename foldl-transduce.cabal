@@ -37,6 +37,7 @@ Library
     Exposed-Modules:
         Control.Foldl.Transduce,
         Control.Foldl.Transduce.Text,
+        Control.Foldl.Transduce.Textual,
         Control.Foldl.Transduce.ByteString.IO,
         Control.Foldl.Transduce.Internal
     GHC-Options: -O2 -Wall

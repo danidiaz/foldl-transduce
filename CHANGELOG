@@ -1,6 +1,7 @@
 # 0.4.2.0
 
 - Added "trip" fold.
+- Added Control.Foldl.Transduce.Textual.
 
 # 0.4.1.0
 
