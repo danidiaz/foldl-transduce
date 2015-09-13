@@ -13,6 +13,7 @@ import qualified Data.Text as T
 import qualified Control.Foldl as L
 import Control.Foldl.Transduce
 import Control.Foldl.Transduce.Text
+import Control.Foldl.Transduce.Textual
 
 main :: IO ()
 main = defaultMain tests
@@ -46,6 +47,19 @@ tests =
                     ([[1,2,3],[4,5,6],[7]]::[[Int]])
                     (L.fold (folds (chunksOf 3) L.list L.list) [1..7])
         ]
+        ,
+        testGroup "textualSplitWhen" $ 
+        [
+            testCase "beginwithdot" $
+                assertEqual mempty
+                    ".bb"
+                    (L.fold (bisect (textualSplitWhen (=='.')) ignore (reify id) L.mconcat) ["aa",".bb"])
+            ,
+            testCase "endwithdot" $
+                assertEqual mempty
+                    "."
+                    (L.fold (bisect (textualSplitWhen (=='.')) ignore (reify id) L.mconcat) ["aa","bb."])
+        ]   
         ,
         testGroup "newline" $ 
         [
