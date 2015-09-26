@@ -1,14 +1,16 @@
 module Main where
 
-import Prelude hiding (splitAt)
+import Prelude hiding (splitAt,lines,words)
 import Data.String hiding (lines,words)
 import Data.Monoid
 import Data.Bifunctor
 import qualified Data.Monoid.Factorial as SFM
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.QuickCheck
 
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
 
 import qualified Control.Foldl as L
 import Control.Foldl.Transduce
@@ -17,6 +19,15 @@ import Control.Foldl.Transduce.Textual
 
 main :: IO ()
 main = defaultMain tests
+
+newtype WordQC = WordQC { getWordQC :: T.Text } deriving (Show)
+
+instance Arbitrary WordQC where
+    arbitrary = do
+        firstChar <- oneof [pure ' ', pure '\n', arbitrary]
+        lastChar <- oneof [pure ' ', pure '\n', arbitrary]
+        middle <- listOf (frequency [(1,pure ' '),(4,arbitrary)])
+        return (WordQC (T.pack (firstChar : (middle ++ [lastChar]))))
 
 tests :: TestTree
 tests = 
@@ -72,6 +83,20 @@ tests =
                 assertEqual mempty
                 (T.pack "\n")
                 (mconcat (L.fold (transduce newline L.list) (map T.pack [""])))
+        ]
+        ,
+        testGroup "words" 
+        [ 
+            testGroup "quickcheck" 
+            [ 
+                testProperty "quickcheck1" (\chunks -> 
+                         let tchunks = fmap getWordQC chunks 
+                         in
+                         (case TL.words (TL.fromChunks tchunks) of
+                            [] -> [mempty]
+                            x -> x) ==
+                         (fmap TL.fromChunks (L.fold (folds words L.list L.list) tchunks)))
+            ]
         ]
         ,
         testGroup "quiesceWith" $ 

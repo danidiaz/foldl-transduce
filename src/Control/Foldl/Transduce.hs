@@ -570,7 +570,7 @@ quiesceWith fallback original = hoistFold (fmap (either absurd id) . runExceptT)
 
 newtype Fallible m r i e = Fallible { getFallible :: FoldM (ExceptT e m) i r }
 
-bindFallible :: Monad m => Fallible m r i e -> (e -> Fallible m r i e') -> Fallible m r i e'
+bindFallible :: (Functor m,Monad m) => Fallible m r i e -> (e -> Fallible m r i e') -> Fallible m r i e'
 bindFallible (Fallible (FoldM step initial done)) k =
     Fallible (FoldM step' (lift (runExceptT (withExceptT (getFallible . k) initial))) done')
     where 
@@ -599,7 +599,7 @@ bindFallible (Fallible (FoldM step initial done)) k =
                          runExceptT (done' (Left (getFallible (k e))))
                      Right x'' -> return (Right x''))
 
-instance Monad m => Functor (Fallible m r i) where
+instance (Functor m, Monad m) => Functor (Fallible m r i) where
     fmap g (Fallible fallible) = 
         Fallible (hoistFold (withExceptT g) fallible)
 
@@ -607,12 +607,12 @@ instance Monad m => Functor (Fallible m r i) where
 {-| 'pure' creates a 'Fallible' that starts in a failed state.		
 
 -}
-instance Monad m => Applicative (Fallible m r i) where
+instance (Functor m,Monad m) => Applicative (Fallible m r i) where
     pure e = Fallible (FoldM (\_ _ -> throwE e) (throwE e) (\_ -> throwE e))
 
     u <*> v = u >>= \f -> fmap f v
 
-instance Monad m => Profunctor (Fallible m r) where
+instance (Functor m, Monad m) => Profunctor (Fallible m r) where
     lmap f (Fallible fallible) = 
         Fallible (L.premapM f fallible)
 
@@ -622,7 +622,7 @@ instance Monad m => Profunctor (Fallible m r) where
 {-| Fail immediately when an input comes in the wrong branch.		
 
 -}
-instance (Monad m,Monoid r) => Choice (Fallible m r) where
+instance (Functor m,Monad m,Monoid r) => Choice (Fallible m r) where
     left' (Fallible fallible) = 
         Fallible (liftA2 mappend (hoistFold (withExceptT Left) (L.handlesM _Left fallible)) (hoistFold (withExceptT Right) (L.handlesM _Right (trip $> mempty))))
 
@@ -639,7 +639,7 @@ _Right f e = case e of
 {-| '>>=' continues folding after an error using a 'Fallible' constructed from the error.		
 
 -}
-instance Monad m => Monad (Fallible m r i) where
+instance (Functor m,Monad m) => Monad (Fallible m r i) where
     (>>=) = bindFallible
     return = pure
 

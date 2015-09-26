@@ -1,4 +1,10 @@
+# 0.4.4.0
+
+- deprecated quiesceWith
+- added Fallible.
+
 # 0.4.3.0
+
 - deprecated splitWhen in favor of break
 - deprecated textualSplitWhen in favor of textualBreak
 
