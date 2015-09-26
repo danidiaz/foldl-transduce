@@ -94,6 +94,7 @@ import Data.Functor
 import Data.Bifunctor
 import Data.Profunctor
 import Data.Monoid
+import Data.Void
 import qualified Data.Monoid.Cancellative as CM
 import qualified Data.Monoid.Null as NM
 import qualified Data.Monoid.Factorial as SFM
@@ -552,34 +553,11 @@ quiesce (FoldM step initial done) =
 -- >>> L.foldM (quiesceWith (L.generalize L.length) (FoldM (\_ _-> throwE ()) (return ()) (\_ -> throwE ()))) [1..7]
 -- Left ((),7)
 ---}
-{-# DEPRECATED quiesceWith "Use Fallible instead." #-}
+{-# DEPRECATED quiesceWith "The signature of this function will change." #-}
 quiesceWith :: (Functor m,Monad m) => FoldM m a v -> FoldM (ExceptT e m) a r -> FoldM m a (Either (e,v) r)
-quiesceWith fallbackFold (FoldM step initial done) = 
-    FoldM step' (runExceptT (withExceptT (Pair fallbackFold) initial)) done'
-    where
-    step' x i = do  
-        case x of
-            Left (Pair ffold e) -> do
-                ffold' <- L.foldM (duplicated ffold) [i]
-                return (Left (Pair ffold' e))
-            Right notyetfail -> do
-                 x' <- runExceptT (step notyetfail i)
-                 case x' of
-                     Left e -> do
-                         ffold <- L.foldM (duplicated fallbackFold) [i]
-                         return (Left (Pair ffold e))
-                     Right x'' -> return (Right x'')
-    done' x = case x of
-            Left (Pair ffold e) -> do
-                alternativeResult <- L.foldM ffold []
-                return (Left (e,alternativeResult))
-            Right notyetfail -> do 
-                x' <- runExceptT (done notyetfail)
-                case x' of
-                    Left e -> do
-                        alternativeResult <- L.foldM fallbackFold []
-                        return (Left (e,alternativeResult))
-                    Right x'' -> return (Right x'')
+quiesceWith fallback original = hoistFold (fmap (either absurd id) . runExceptT) (getFallible (do
+    e <- Fallible (fmap Right original)
+    Fallible (hoistFold lift (fmap (\x -> Left (e,x)) fallback))))
 
 newtype Fallible m r i e = Fallible { getFallible :: FoldM (ExceptT e m) i r }
 
