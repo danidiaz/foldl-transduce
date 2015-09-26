@@ -6,10 +6,19 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE CPP #-}
 
--- |
---
--- This module builds on module "Control.Foldl", adding stateful transducers
--- and grouping operations.
+{-| This module builds on module "Control.Foldl", adding stateful transducers
+    and grouping operations.
+
+>>> L.fold (transduce (surround "[" "]") L.list) "middle"
+"[middle]"
+
+>>> L.fold (folds (chunksOf 2) L.length L.list) "aabbccdd"
+[2,2,2,2]
+
+>>> L.fold (groups (chunksOf 2) (surround "[" "]") L.list) "aabbccdd"
+"[aa][bb][cc][dd]"
+
+-}
 
 module Control.Foldl.Transduce (
         -- * Transducer types
@@ -595,6 +604,9 @@ instance Monad m => Functor (Fallible m r i) where
         Fallible (hoistFold (withExceptT g) fallible)
 
 
+{-| 'pure' creates a 'Fallible' that starts in a failed state.		
+
+-}
 instance Monad m => Applicative (Fallible m r i) where
     pure e = Fallible (FoldM (\_ _ -> throwE e) (throwE e) (\_ -> throwE e))
 
@@ -607,6 +619,9 @@ instance Monad m => Profunctor (Fallible m r) where
     rmap g (Fallible fallible) = 
         Fallible (hoistFold (withExceptT g) fallible)
 
+{-| Fail immediately when an input comes in the wrong branch.		
+
+-}
 instance (Monad m,Monoid r) => Choice (Fallible m r) where
     left' (Fallible fallible) = 
         Fallible (liftA2 mappend (hoistFold (withExceptT Left) (L.handlesM _Left fallible)) (hoistFold (withExceptT Right) (L.handlesM _Right (trip $> mempty))))
@@ -621,6 +636,9 @@ _Right f e = case e of
     Left b -> pure (Left b)
     Right a -> fmap Right (f a)
 
+{-| '>>=' continues folding after an error using a 'Fallible' constructed from the error.		
+
+-}
 instance Monad m => Monad (Fallible m r i) where
     (>>=) = bindFallible
     return = pure
