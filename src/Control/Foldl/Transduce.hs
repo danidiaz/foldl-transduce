@@ -71,11 +71,11 @@ module Control.Foldl.Transduce (
     ,   condenseM
     ,   hoistTransducer
         -- * Fold utilities
-    ,   quiesce
-    ,   quiesceWith
     ,   hoistFold
     ,   unit
     ,   trip
+    ,   quiesce
+    ,   Fallible(..)
     ,   ToFold(..)
     ,   ToFoldM(..)
         -- * Re-exports
@@ -85,11 +85,14 @@ module Control.Foldl.Transduce (
     ,   module Control.Comonad.Cofree
         -- * Deprecated
     ,   splitWhen
+    ,   quiesceWith
     ) where
 
 import Prelude hiding (splitAt,break)
 
+import Data.Functor
 import Data.Bifunctor
+import Data.Profunctor
 import Data.Monoid
 import qualified Data.Monoid.Cancellative as CM
 import qualified Data.Monoid.Null as NM
@@ -101,6 +104,7 @@ import Data.Traversable
 import Control.Applicative
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Comonad
 import Control.Comonad.Cofree 
@@ -311,6 +315,7 @@ instance (m ~ m') => ToFoldM m (FoldM m') where
 
 instance Monad m => ToFoldM m Fold where
     toFoldM = L.generalize
+
 
 {-| Apply a 'Transducer' to a 'Fold', discarding the return value of the
     'Transducer'.		
@@ -538,15 +543,16 @@ quiesce (FoldM step initial done) =
                     Left e -> return (Left e)
                     Right r -> return (Right r)
 
-{-| Generalized version of 'quiesce' to turn a fallible 'FoldM' into another
-    that starts a "fallback fold" when it encounters an error.
-
-    "Start folding this way, if you encounter an error, start folding this 
-    other way".                               
-
->>> L.foldM (quiesceWith (L.generalize L.length) (FoldM (\_ _-> throwE ()) (return ()) (\_ -> throwE ()))) [1..7]
-Left ((),7)
--}
+--{-| Generalized version of 'quiesce' to turn a fallible 'FoldM' into another
+--    that starts a "fallback fold" when it encounters an error.
+--
+--    "Start folding this way, if you encounter an error, start folding this 
+--    other way".                               
+--
+-- >>> L.foldM (quiesceWith (L.generalize L.length) (FoldM (\_ _-> throwE ()) (return ()) (\_ -> throwE ()))) [1..7]
+-- Left ((),7)
+---}
+{-# DEPRECATED quiesceWith "Use Fallible instead." #-}
 quiesceWith :: (Functor m,Monad m) => FoldM m a v -> FoldM (ExceptT e m) a r -> FoldM m a (Either (e,v) r)
 quiesceWith fallbackFold (FoldM step initial done) = 
     FoldM step' (runExceptT (withExceptT (Pair fallbackFold) initial)) done'
@@ -574,6 +580,72 @@ quiesceWith fallbackFold (FoldM step initial done) =
                         alternativeResult <- L.foldM fallbackFold []
                         return (Left (e,alternativeResult))
                     Right x'' -> return (Right x'')
+
+newtype Fallible m r i e = Fallible { getFallible :: FoldM (ExceptT e m) i r }
+
+bindFallible :: Monad m => Fallible m r i e -> (e -> Fallible m r i e') -> Fallible m r i e'
+bindFallible (Fallible (FoldM step initial done)) k =
+    Fallible (FoldM step' (lift (runExceptT (withExceptT (getFallible . k) initial))) done')
+    where 
+        step' x i = ExceptT (case x of
+            Left ffold -> do
+                rx <- runExceptT (L.foldM (duplicated ffold) [i])
+                case rx of
+                    Left e' -> return (Left e') -- true failure
+                    Right ffold' -> return (Right (Left ffold'))
+            Right notyetfail -> do
+                 x' <- runExceptT (step notyetfail i)
+                 case x' of
+                     Left e -> do
+                         return (Right (Left ((getFallible . k) e)))
+                     Right x'' -> return (Right (Right x'')))
+        done' x = ExceptT (case x of
+            Left ffold -> do
+                rx <- runExceptT (L.foldM ffold [])
+                case rx of
+                    Left e' -> return (Left e') -- true failure
+                    Right r -> return (Right r)
+            Right notyetfail -> do
+                 x' <- runExceptT (done notyetfail)
+                 case x' of
+                     Left e -> do
+                         runExceptT (done' (Left (getFallible (k e))))
+                     Right x'' -> return (Right x''))
+
+instance Monad m => Functor (Fallible m r i) where
+    fmap g (Fallible fallible) = 
+        Fallible (hoistFold (withExceptT g) fallible)
+
+
+instance Monad m => Applicative (Fallible m r i) where
+    pure e = Fallible (FoldM (\_ _ -> throwE e) (throwE e) (\_ -> throwE e))
+
+    u <*> v = u >>= \f -> fmap f v
+
+instance Monad m => Profunctor (Fallible m r) where
+    lmap f (Fallible fallible) = 
+        Fallible (L.premapM f fallible)
+
+    rmap g (Fallible fallible) = 
+        Fallible (hoistFold (withExceptT g) fallible)
+
+instance (Monad m,Monoid r) => Choice (Fallible m r) where
+    left' (Fallible fallible) = 
+        Fallible (liftA2 mappend (hoistFold (withExceptT Left) (L.handlesM _Left fallible)) (hoistFold (withExceptT Right) (L.handlesM _Right (trip $> mempty))))
+
+_Left :: Applicative f => (a -> f a) -> Either a b -> f (Either a b)
+_Left f e = case e of
+    Right b -> pure (Right b)
+    Left a -> fmap Left (f a)
+
+_Right :: Applicative f => (b -> f b) -> Either a b -> f (Either a b)
+_Right f e = case e of
+    Left b -> pure (Left b)
+    Right a -> fmap Right (f a)
+
+instance Monad m => Monad (Fallible m r i) where
+    (>>=) = bindFallible
+    return = pure
 
 {-| The "do-nothing" fold.		
 
