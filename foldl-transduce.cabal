@@ -1,5 +1,5 @@
 Name: foldl-transduce
-Version: 0.4.4.0
+Version: 0.4.4.1
 Cabal-Version: >=1.8.0.2
 Build-Type: Simple
 License: BSD3
@@ -74,10 +74,11 @@ benchmark benchmarks
     Type:             exitcode-stdio-1.0
     HS-Source-Dirs:   benchmarks
     Main-Is:          benchmarks.hs
-    GHC-Options:     -O2 -Wall -rtsopts 
+    GHC-Options: -O2 -Wall -rtsopts 
 
     Build-Depends:
         base         >= 4.4     && < 5  ,
         criterion    >= 1.1.0.0 && < 1.2,
+        lens-family-core >= 1.2.0       ,
         foldl                           ,
         foldl-transduce
