@@ -68,6 +68,7 @@ module Control.Foldl.Transduce (
     ,   surroundIO
         -- * Splitters
     ,   chunksOf
+    ,   split
     ,   splitAt
     ,   chunkedSplitAt
     ,   splitLast
@@ -97,7 +98,7 @@ module Control.Foldl.Transduce (
     ,   quiesceWith
     ) where
 
-import Prelude hiding (splitAt,break)
+import Prelude hiding (split,splitAt,break)
 
 import Data.Functor
 import Data.Bifunctor
@@ -128,7 +129,7 @@ import Control.Foldl.Transduce.Internal (Pair(..),Quartet(..),_1of3)
 >>> import Control.Foldl.Transduce
 >>> import Control.Applicative
 >>> import qualified Control.Comonad.Cofree as C
->>> import Prelude hiding (splitAt,break)
+>>> import Prelude hiding (split,splitAt,break)
 
 -}
 
@@ -994,25 +995,55 @@ chunkedSplitAt howmany =
                 (Nothing,[prefix],[[suffix]])
         done = mempty
 
-data SplitWhenWhenState = 
-      SplitWhenConditionEncountered 
-    | SplitWhenConditionPending
+data SplitState = 
+      PreviousSeparator
+    | PreviousNonSeparator
+
+{-| 		
+
+>>> L.fold (folds (split (==2)) L.list L.list) [1,2,2,1,1,2,1]
+[[1],[],[1,1],[1]]
+
+>>> L.fold (folds (split (==2)) L.list L.list) [2,1,1,2]
+[[],[1,1],[]]
+
+-}
+split :: (a -> Bool) -> Transducer a a ()
+split predicate = 
+    Transducer step PreviousNonSeparator done 
+    where
+        step PreviousNonSeparator i = 
+            if predicate i 
+               then (PreviousSeparator,[],[])
+               else (PreviousNonSeparator,[i],[])
+        step PreviousSeparator i = 
+            if predicate i 
+               then (PreviousSeparator,[],[[]])
+               else (PreviousNonSeparator,[],[[i]])
+        done PreviousNonSeparator = mempty
+        done PreviousSeparator = ((),[],[[]])
+
+
+data BreakWhenState = 
+      BreakConditionEncountered 
+    | BreakConditionPending
 
 {-| 		
 
 >>> L.fold (bisect (break (>3)) (reify id) ignore L.list) [1..5]
 [1,2,3]
+
 -}
 break :: (a -> Bool) -> Transducer a a ()
 break predicate = 
-    Transducer step SplitWhenConditionPending done 
+    Transducer step BreakConditionPending done 
     where
-        step SplitWhenConditionPending i = 
+        step BreakConditionPending i = 
             if predicate i 
-               then (SplitWhenConditionEncountered,[],[[i]])
-               else (SplitWhenConditionPending,[i],[])
-        step SplitWhenConditionEncountered i = 
-               (SplitWhenConditionEncountered,[i],[])
+               then (BreakConditionEncountered,[],[[i]])
+               else (BreakConditionPending,[i],[])
+        step BreakConditionEncountered i = 
+               (BreakConditionEncountered,[i],[])
         done = mempty
 
 {-| Puts the last element of the input stream (if it exists) in a separate
