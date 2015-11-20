@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -- |
 --
@@ -17,8 +18,9 @@ module Control.Foldl.Transduce.Text (
     ,   stripStart
     ,   stripEnd
         -- * Splitters
-    ,   lines
     ,   words
+    ,   lines
+    ,   paragraphs
         -- * Re-exports
         -- $reexports
     ,   module Control.Foldl.Transduce.Textual
@@ -40,6 +42,7 @@ import Control.Exception.Base
 import qualified Control.Foldl.Transduce as L
 import Control.Foldl.Transduce.Textual
 import Control.Foldl.Transduce.Internal (Pair(..))
+import qualified Data.List
 
 {- $setup
 
@@ -273,6 +276,30 @@ words = L.Transducer step NoLastChar done
                                else ([w],map pure ws)
                         (_,[]) -> error "never happens, txt not blank"
                 in (nextstate,oldgroup,newgroups)
+        done _ = ((),[],[])
+
+
+data ParagraphsState = 
+      NoLastLine
+    | LastLineBlank
+    | LastLineNonBlank
+
+{-| Splits a stream of text into paragraphs, removing empty lines.
+
+-}
+paragraphs :: L.Transducer T.Text T.Text ()
+paragraphs = L.Transducer step NoLastLine done 
+    where
+        step tstate txt
+            | Data.Text.null txt = (tstate,[],[])
+            | otherwise = 
+                let lastCharNewline = T.last txt == '\n'
+                    ls = T.lines txt
+                    (lastl,Data.List.reverse -> middle) = maybe (error "paragaphs") id (Data.List.uncons (reverse ls))
+                in case tstate of
+                    NoLastLine -> undefined
+                    LastLineBlank -> undefined
+                    LastLineNonBlank -> undefined
         done _ = ((),[],[])
 
 ------------------------------------------------------------------------------

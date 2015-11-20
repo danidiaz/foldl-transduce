@@ -121,7 +121,7 @@ import Control.Comonad
 import Control.Comonad.Cofree 
 import Control.Foldl (Fold(..),FoldM(..))
 import qualified Control.Foldl as L
-import Control.Foldl.Transduce.Internal (Pair(..),Quartet(..),_1of3)
+import Control.Foldl.Transduce.Internal (Pair(..),Quartet(..),fst3)
 
 {- $setup
 
@@ -203,7 +203,7 @@ data Transducer i o r
      = forall x. Transducer (x -> i -> (x,[o],[[o]])) x (x -> (r,[o],[[o]]))
 
 instance Comonad (Transducer i o) where
-    extract (Transducer _ begin done) = _1of3 (done begin)
+    extract (Transducer _ begin done) = fst3 (done begin)
     {-# INLINABLE extract #-}
 
     duplicate (Transducer step begin done) = Transducer step begin (\x -> (Transducer step x done,[],[]))
@@ -486,14 +486,14 @@ _simplify (TransducerM step begin done) = Transducer step' begin' done'
 -}
 foldify :: Transducer i o s -> Fold i s
 foldify (Transducer step begin done) =
-    Fold (\x i -> _1of3 (step x i)) begin (\x -> _1of3 (done x))
+    Fold (\x i -> fst3 (step x i)) begin (\x -> fst3 (done x))
 
 {-| Monadic version of 'foldify'.		
 
 -}
 foldifyM :: Functor m => TransducerM m i o s -> FoldM m i s
 foldifyM (TransducerM step begin done) =
-    FoldM (\x i -> fmap _1of3 (step x i)) begin (\x -> fmap _1of3 (done x))
+    FoldM (\x i -> fmap fst3 (step x i)) begin (\x -> fmap fst3 (done x))
 
 {-| Transforms a 'Fold' into a 'Transducer' that sends the return value of the
     'Fold' downstream when upstream closes.		

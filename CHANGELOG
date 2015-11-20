@@ -1,6 +1,7 @@
 # 0.4.6.0
 
 - Deprecated Control.Foldl.Transduce.ByteString.IO 
+- Added "paragraphs" splitter.
 
 # 0.4.5.0
 
