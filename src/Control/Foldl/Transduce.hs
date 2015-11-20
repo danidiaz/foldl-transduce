@@ -168,7 +168,7 @@ type Transduction a b = forall x. Fold b x -> Fold a x
 -}
 type Transduction' a b r = forall x. Fold b x -> Fold a (r,x)
 
-{-| Helper for storing a 'ReifiedTransduction'' safely on a container.		
+{-| Helper for storing a 'Transduction'' safely on a container.		
 
 -}
 newtype ReifiedTransduction' a b r = ReifiedTransduction' { getTransduction' :: Transduction' a b r }

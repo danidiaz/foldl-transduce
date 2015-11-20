@@ -1,5 +1,5 @@
 Name: foldl-transduce
-Version: 0.4.5.0
+Version: 0.4.6.0
 Cabal-Version: >=1.8.0.2
 Build-Type: Simple
 License: BSD3
@@ -40,6 +40,7 @@ Library
         Control.Foldl.Transduce,
         Control.Foldl.Transduce.Text,
         Control.Foldl.Transduce.Textual,
+        Control.Foldl.Transduce.ByteString,
         Control.Foldl.Transduce.ByteString.IO,
         Control.Foldl.Transduce.Internal
     GHC-Options: -O2 -Wall

@@ -5,7 +5,7 @@
 --
 -- Pour handles into folds,
 -- write to handles using folds. 
-module Control.Foldl.Transduce.ByteString.IO (
+module Control.Foldl.Transduce.ByteString.IO {-# DEPRECATED "Control.Foldl.Transduce.ByteString instead." #-} (
         driveHandle
     ,   toHandle
     ,   toHandleBuilder  
