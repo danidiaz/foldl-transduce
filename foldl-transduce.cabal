@@ -35,6 +35,7 @@ Library
         comonad       == 4.*               ,
         free          == 4.*               ,         
         void          >= 0.6               ,
+        split         >= 0.2.2             ,
         monoid-subclasses == 0.4.*         
     Exposed-Modules:
         Control.Foldl.Transduce,

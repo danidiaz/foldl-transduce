@@ -43,6 +43,7 @@ import qualified Control.Foldl.Transduce as L
 import Control.Foldl.Transduce.Textual
 import Control.Foldl.Transduce.Internal (Pair(..))
 import qualified Data.List
+import qualified Data.List.Split
 
 {- $setup
 
@@ -280,26 +281,30 @@ words = L.Transducer step NoLastChar done
 
 
 data ParagraphsState = 
-      NoLastLine
-    | LastLineBlank
-    | LastLineNonBlank
+      SkippingAfterStreamStart
+    | SkippingAfterNewline
+    | ContinuingNonemptyLine
 
 {-| Splits a stream of text into paragraphs, removing empty lines.
 
 -}
 paragraphs :: L.Transducer T.Text T.Text ()
-paragraphs = L.Transducer step NoLastLine done 
+paragraphs = L.Transducer step SkippingAfterStreamStart done 
     where
         step tstate txt
             | Data.Text.null txt = (tstate,[],[])
             | otherwise = 
-                let lastCharNewline = T.last txt == '\n'
-                    ls = T.lines txt
-                    (lastl,Data.List.reverse -> middle) = maybe (error "paragaphs") id (Data.List.uncons (reverse ls))
+                let lastCharIsNewline = T.last txt == '\n'
+                    lineList = T.lines txt
+                    nonemptyLines = Data.List.Split.splitWhen blank lineList
+--                    (lastl,Data.List.reverse -> middle) = maybe (error "paragraphs") id (Data.List.uncons (reverse ls))
+--                    middle' = Data.List.filter blank middle
                 in case tstate of
-                    NoLastLine -> undefined
-                    LastLineBlank -> undefined
-                    LastLineNonBlank -> undefined
+                    SkippingAfterStreamStart 
+                        | False -> undefined
+                        | True -> undefined
+                    SkippingAfterNewline -> undefined
+                    ContinuingNonemptyLine -> undefined
         done _ = ((),[],[])
 
 ------------------------------------------------------------------------------
