@@ -29,7 +29,7 @@ module Control.Foldl.Transduce.Text (
 import Prelude hiding (lines,words)
 import Data.Char
 import Data.Monoid (mempty)
-import Data.Foldable (foldMap)
+import Data.Foldable (foldMap,foldl')
 import qualified Data.ByteString as B
 import qualified Data.Text 
 import qualified Data.Text as T
@@ -43,6 +43,7 @@ import qualified Control.Foldl.Transduce as L
 import Control.Foldl.Transduce.Textual
 import Control.Foldl.Transduce.Internal (Pair(..))
 import qualified Data.List
+import Data.List.Split
 import qualified Data.List.Split
 
 {- $setup
@@ -292,20 +293,43 @@ paragraphs :: L.Transducer T.Text T.Text ()
 paragraphs = L.Transducer step SkippingAfterStreamStart done 
     where
         step tstate txt
-            | Data.Text.null txt = (tstate,[],[])
+            | Data.Text.null txt = 
+                (tstate,[],[])
             | otherwise = 
-                let lastCharIsNewline = T.last txt == '\n'
-                    lineList = T.lines txt
-                    nonemptyLines = Data.List.Split.splitWhen blank lineList
---                    (lastl,Data.List.reverse -> middle) = maybe (error "paragraphs") id (Data.List.uncons (reverse ls))
---                    middle' = Data.List.filter blank middle
-                in case tstate of
-                    SkippingAfterStreamStart 
-                        | False -> undefined
-                        | True -> undefined
-                    SkippingAfterNewline -> undefined
-                    ContinuingNonemptyLine -> undefined
-        done _ = ((),[],[])
+                let (initlines,lastline) = splittedLines txt
+                    (tstate',outputsreversed) =
+                        advanceNoNl
+                        (foldl' 
+                            advance
+                            (tstate,[])
+                            initlines)
+                        lastline          
+                in (tstate',reverse outputsreversed,[])
+        done _ = 
+            ((),[],[])
+        splittedLines :: T.Text -> ([T.Text],T.Text)
+        splittedLines nonEmptyChunk = 
+            let splitted = 
+                    Data.Text.lines nonEmptyChunk 
+                    ++
+                    if T.last nonEmptyChunk == '\n' then [mempty] else mempty
+            in (init splitted, last splitted) -- unsafe with empty lists!!!
+        advance :: (ParagraphsState, [T.Text]) -> T.Text -> (ParagraphsState, [T.Text])
+        advance (s,outputs) i = 
+            case (s, blank i) of
+                (SkippingAfterStreamStart, True) -> (SkippingAfterStreamStart,outputs)
+                (SkippingAfterStreamStart, False) -> (SkippingAfterNewline,"\n":i:outputs)
+                (SkippingAfterNewline, True) -> (SkippingAfterNewline,outputs) -- new paragraph!!!
+                (SkippingAfterNewline, False) -> (SkippingAfterNewline,"\n":i:outputs)
+                (ContinuingNonemptyLine, _) -> (SkippingAfterNewline,"\n":i:outputs)
+        advanceNoNl :: (ParagraphsState, [T.Text]) -> T.Text -> (ParagraphsState, [T.Text])
+        advanceNoNl (s,outputs) i = 
+            case (s, blank i) of
+                (SkippingAfterStreamStart, True) -> (SkippingAfterStreamStart,outputs)
+                (SkippingAfterStreamStart, False) -> (SkippingAfterNewline,i:outputs)
+                (SkippingAfterNewline, True) -> (SkippingAfterNewline,outputs)
+                (SkippingAfterNewline, False) -> (ContinuingNonemptyLine,i:outputs)
+                (ContinuingNonemptyLine, _) -> (ContinuingNonemptyLine,i:outputs)
 
 ------------------------------------------------------------------------------
 
