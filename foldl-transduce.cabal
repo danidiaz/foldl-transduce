@@ -30,6 +30,7 @@ Library
         containers                   < 0.6 ,
         bifunctors    == 5.*               ,
         profunctors   == 5.*               ,
+        semigroups    >= 0.18              ,
         semigroupoids >= 5.0               ,
         foldl         >= 1.1      && < 2   ,
         comonad       == 4.*               ,
