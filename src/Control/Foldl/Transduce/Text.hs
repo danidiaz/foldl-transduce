@@ -332,7 +332,7 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
         advanceLast (s,outputs) i = 
             case (s, blank i) of
                 (SkippingAfterStreamStart, True) -> (SkippingAfterStreamStart,outputs)
-                (SkippingAfterStreamStart, False) -> (SkippingAfterNewline,prepend [T.stripStart i] outputs)
+                (SkippingAfterStreamStart, False) -> (ContinuingNonemptyLine,prepend [T.stripStart i] outputs)
                 (SkippingAfterNewline, True) -> (SkippingAfterNewline,outputs)
                 (SkippingAfterNewline, False) -> (ContinuingNonemptyLine,prepend [T.stripStart i] outputs)
                 (SkippingAfterBlankLine, True) -> (SkippingAfterBlankLine,outputs) 
