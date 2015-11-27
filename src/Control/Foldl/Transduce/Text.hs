@@ -286,6 +286,7 @@ words = L.Transducer step NoLastChar done
 data ParagraphsState = 
       SkippingAfterStreamStart
     | SkippingAfterNewline
+    | SkippingAfterBlankLine
     | ContinuingNonemptyLine
 
 {-| Splits a stream of text into paragraphs, removing empty lines.
@@ -300,8 +301,7 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
             | otherwise = 
                 let (initlines,lastline) = splittedLines txt
                     (tstate', outputsreversed) =
-
-                        advanceNoNl
+                        advanceLast
                         (foldl' 
                             advance
                             (tstate,pure [])
@@ -322,19 +322,21 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
         advance (s,outputs) i = 
             case (s, blank i) of
                 (SkippingAfterStreamStart, True) -> (SkippingAfterStreamStart,outputs)
-                (SkippingAfterStreamStart, False) -> (SkippingAfterNewline,prepend ["\n",i] outputs)
-                -- problem: the new group should be signalled when new non-blank data arrives,not
-                -- when the separator is detected. Solution: add an auxiliary state.
-                (SkippingAfterNewline, True) -> (SkippingAfterNewline,NonEmpty.cons [] outputs) -- new paragraph!!!
-                (SkippingAfterNewline, False) -> (SkippingAfterNewline,prepend ["\n",i] outputs)
+                (SkippingAfterStreamStart, False) -> (SkippingAfterNewline,prepend ["\n",T.stripStart i] outputs) 
+                (SkippingAfterNewline, True) -> (SkippingAfterBlankLine, outputs) 
+                (SkippingAfterNewline, False) -> (SkippingAfterNewline,prepend ["\n",T.stripStart i] outputs) 
+                (SkippingAfterBlankLine, True) -> (SkippingAfterBlankLine,outputs) -- * 
+                (SkippingAfterBlankLine, False) -> (SkippingAfterNewline, prepend ["\n",T.stripStart i] (NonEmpty.cons [] outputs)) 
                 (ContinuingNonemptyLine, _) -> (SkippingAfterNewline,prepend ["\n",i] outputs)
-        advanceNoNl :: (ParagraphsState, NonEmpty [T.Text]) -> T.Text -> (ParagraphsState, NonEmpty [T.Text])
-        advanceNoNl (s,outputs) i = 
+        advanceLast :: (ParagraphsState, NonEmpty [T.Text]) -> T.Text -> (ParagraphsState, NonEmpty [T.Text])
+        advanceLast (s,outputs) i = 
             case (s, blank i) of
                 (SkippingAfterStreamStart, True) -> (SkippingAfterStreamStart,outputs)
-                (SkippingAfterStreamStart, False) -> (SkippingAfterNewline,prepend [i] outputs)
+                (SkippingAfterStreamStart, False) -> (SkippingAfterNewline,prepend [T.stripStart i] outputs)
                 (SkippingAfterNewline, True) -> (SkippingAfterNewline,outputs)
-                (SkippingAfterNewline, False) -> (ContinuingNonemptyLine,prepend [i] outputs)
+                (SkippingAfterNewline, False) -> (ContinuingNonemptyLine,prepend [T.stripStart i] outputs)
+                (SkippingAfterBlankLine, True) -> (SkippingAfterBlankLine,outputs) 
+                (SkippingAfterBlankLine, False) -> (ContinuingNonemptyLine,prepend [T.stripStart i] (NonEmpty.cons [] outputs))
                 (ContinuingNonemptyLine, _) -> (ContinuingNonemptyLine,prepend [i] outputs)
         prepend :: [a] -> NonEmpty [a] -> NonEmpty [a]
         prepend as (as':| rest) = (as ++ as') :| rest
