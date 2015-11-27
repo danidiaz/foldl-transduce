@@ -289,8 +289,11 @@ data ParagraphsState =
     | SkippingAfterBlankLine
     | ContinuingNonemptyLine
 
-{-| Splits a stream of text into paragraphs, removing empty lines.
+{-| Splits a stream of text into paragraphs, removing empty lines and trimming
+    newspace from the start of each line.
 
+    Used with 'L.transduce', it removes empty lines and trims newspace from the
+    start of each line.
 -}
 paragraphs :: L.Transducer T.Text T.Text ()
 paragraphs = L.Transducer step SkippingAfterStreamStart done 
@@ -325,7 +328,7 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
                 (SkippingAfterStreamStart, False) -> (SkippingAfterNewline,prepend ["\n",T.stripStart i] outputs) 
                 (SkippingAfterNewline, True) -> (SkippingAfterBlankLine, outputs) 
                 (SkippingAfterNewline, False) -> (SkippingAfterNewline,prepend ["\n",T.stripStart i] outputs) 
-                (SkippingAfterBlankLine, True) -> (SkippingAfterBlankLine,outputs) -- * 
+                (SkippingAfterBlankLine, True) -> (SkippingAfterBlankLine,outputs) 
                 (SkippingAfterBlankLine, False) -> (SkippingAfterNewline, prepend ["\n",T.stripStart i] (NonEmpty.cons [] outputs)) 
                 (ContinuingNonemptyLine, _) -> (SkippingAfterNewline,prepend ["\n",i] outputs)
         advanceLast :: (ParagraphsState, NonEmpty [T.Text]) -> T.Text -> (ParagraphsState, NonEmpty [T.Text])
