@@ -292,6 +292,9 @@ data ParagraphsState =
 {-| Splits a stream of text into paragraphs, removing empty lines and trimming
     newspace from the start of each line.
 
+>>> map mconcat (L.fold (folds paragraphs L.list L.list) (map T.pack [" \n aaa","\naa ", " \n\nbb\n"]))
+[]
+
     Used with 'L.transduce', it removes empty lines and trims newspace from the
     start of each line.
 -}
