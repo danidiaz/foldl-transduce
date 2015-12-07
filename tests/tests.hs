@@ -1,9 +1,11 @@
 module Main where
 
 import Prelude hiding (splitAt,lines,words)
+import Data.Char
 import Data.String hiding (lines,words)
 import Data.Monoid
 import Data.Bifunctor
+import qualified Data.List.Split as Split
 import qualified Data.Monoid.Factorial as SFM
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -20,6 +22,9 @@ import Control.Foldl.Transduce.Textual
 main :: IO ()
 main = defaultMain tests
 
+blank :: T.Text -> Bool
+blank = T.all isSpace
+
 newtype WordQC = WordQC { getWordQC :: T.Text } deriving (Show)
 
 instance Arbitrary WordQC where
@@ -31,6 +36,14 @@ instance Arbitrary WordQC where
 
 testCaseEq :: (Eq a, Show a) => TestName -> a -> a -> TestTree
 testCaseEq name a1 a2 = testCase name (assertEqual "" a1 a2)
+
+paragraphsBaseline 
+    :: T.Text -> [T.Text] 
+paragraphsBaseline =  
+      map mconcat 
+    . filter (not . null) 
+    . Split.splitWhen blank 
+    . T.lines
 
 tests :: TestTree
 tests = 
