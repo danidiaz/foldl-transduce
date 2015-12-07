@@ -41,8 +41,7 @@ tests =
             testCaseEq "surroundempty" 
                 "prefixsuffix"
                 (L.fold (transduce (surround "prefix" "suffix") L.list) "")
-        ]
-        ,
+        ],
         testGroup "chunksOf" 
         [
             testCaseEq "emptyList3"
@@ -56,8 +55,7 @@ tests =
             testCaseEq "size3" 
                 ([[1,2,3],[4,5,6],[7]]::[[Int]])
                 (L.fold (folds (chunksOf 3) L.list L.list) [1..7])
-        ]
-        ,
+        ],
         testGroup "textualBreak"
         [
             testCaseEq "beginwithdot"
@@ -67,8 +65,7 @@ tests =
             testCaseEq "endwithdot"
                 "."
                 (L.fold (bisect (textualBreak (=='.')) ignore (reify id) L.mconcat) ["aa","bb."])
-        ]   
-        ,
+        ],
         testGroup "newline"
         [
             testCaseEq "newlineempty"
@@ -78,22 +75,20 @@ tests =
             testCaseEq "newlinenull"
                 (T.pack "\n")
                 (mconcat (L.fold (transduce newline L.list) (map T.pack [""])))
-        ]
-        ,
+        ],
         testGroup "words" 
         [ 
             testGroup "quickcheck" 
             [ 
                 testProperty "quickcheck1" (\chunks -> 
-                         let tchunks = fmap getWordQC chunks 
-                         in
-                         (case TL.words (TL.fromChunks tchunks) of
-                            [] -> [mempty]
-                            x -> x) ==
-                         (fmap TL.fromChunks (L.fold (folds words L.list L.list) tchunks)))
+                    let tchunks = fmap getWordQC chunks 
+                    in
+                    (case TL.words (TL.fromChunks tchunks) of
+                       [] -> [mempty]
+                       x -> x) ==
+                    (fmap TL.fromChunks (L.fold (folds words L.list L.list) tchunks)))
             ]
-        ]
-        ,
+        ],
         testGroup "quiesceWith"  
         [
             testCase "collectAfterFailure" (do
