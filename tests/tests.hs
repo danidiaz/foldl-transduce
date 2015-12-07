@@ -29,58 +29,53 @@ instance Arbitrary WordQC where
         middle <- listOf (frequency [(1,pure ' '),(4,arbitrary)])
         return (WordQC (T.pack (firstChar : (middle ++ [lastChar]))))
 
+testCaseEq :: (Eq a, Show a) => TestName -> a -> a -> TestTree
+testCaseEq name a1 a2 = testCase name (assertEqual "" a1 a2)
+
 tests :: TestTree
 tests = 
     testGroup "Tests" 
     [
         testGroup "surround" 
         [
-            testCase "surroundempty" $ 
-                assertEqual mempty
-                    "prefixsuffix"
-                    (L.fold (transduce (surround "prefix" "suffix") L.list) "")
+            testCaseEq "surroundempty" 
+                "prefixsuffix"
+                (L.fold (transduce (surround "prefix" "suffix") L.list) "")
         ]
         ,
         testGroup "chunksOf" 
         [
-            testCase "emptyList3" $ 
-                assertEqual mempty
-                    ([[]]::[[Int]])
-                    (L.fold (folds (chunksOf 3) L.list L.list) [])
+            testCaseEq "emptyList3"
+                ([[]]::[[Int]])
+                (L.fold (folds (chunksOf 3) L.list L.list) [])
             ,
-            testCase "size1" $ 
-                assertEqual mempty
-                    ([[1],[2],[3],[4],[5],[6],[7]]::[[Int]])
-                    (L.fold (folds (chunksOf 1) L.list L.list) [1..7])
+            testCaseEq "size1" 
+                ([[1],[2],[3],[4],[5],[6],[7]]::[[Int]])
+                (L.fold (folds (chunksOf 1) L.list L.list) [1..7])
             ,
-            testCase "size3" $ 
-                assertEqual mempty
-                    ([[1,2,3],[4,5,6],[7]]::[[Int]])
-                    (L.fold (folds (chunksOf 3) L.list L.list) [1..7])
+            testCaseEq "size3" 
+                ([[1,2,3],[4,5,6],[7]]::[[Int]])
+                (L.fold (folds (chunksOf 3) L.list L.list) [1..7])
         ]
         ,
-        testGroup "textualBreak" $ 
+        testGroup "textualBreak"
         [
-            testCase "beginwithdot" $
-                assertEqual mempty
-                    ".bb"
-                    (L.fold (bisect (textualBreak (=='.')) ignore (reify id) L.mconcat) ["aa",".bb"])
+            testCaseEq "beginwithdot"
+                ".bb"
+                (L.fold (bisect (textualBreak (=='.')) ignore (reify id) L.mconcat) ["aa",".bb"])
             ,
-            testCase "endwithdot" $
-                assertEqual mempty
-                    "."
-                    (L.fold (bisect (textualBreak (=='.')) ignore (reify id) L.mconcat) ["aa","bb."])
+            testCaseEq "endwithdot"
+                "."
+                (L.fold (bisect (textualBreak (=='.')) ignore (reify id) L.mconcat) ["aa","bb."])
         ]   
         ,
-        testGroup "newline" $ 
+        testGroup "newline"
         [
-            testCase "newlineempty" $
-                assertEqual mempty
+            testCaseEq "newlineempty"
                 (T.pack "\n")
                 (mconcat (L.fold (transduce newline L.list) (map T.pack [])))
             ,
-            testCase "newlinenull" $
-                assertEqual mempty
+            testCaseEq "newlinenull"
                 (T.pack "\n")
                 (mconcat (L.fold (transduce newline L.list) (map T.pack [""])))
         ]
@@ -99,22 +94,21 @@ tests =
             ]
         ]
         ,
-        testGroup "quiesceWith" $ 
+        testGroup "quiesceWith"  
         [
-            testCase "collectAfterFailure" $
-                let foldthatfails = 
-                        transduceM utf8E (L.generalize L.list)
-                    inputs = 
-                        map fromString ["invalid \xc3\x28 sequence","xxx","zzz","___"]
-                    fallbackfold =
-                        bisectM (chunkedSplitAt 4) (reifyM id) ignore (L.generalize L.list)
-                in
-                do
-                   r <- L.foldM (quiesceWith fallbackfold foldthatfails) inputs 
-                   assertEqual 
-                       mempty 
-                       (Left ('C',4))
-                       (first (bimap (head . show) (SFM.length . mconcat)) r)
+            testCase "collectAfterFailure" (do
+               let
+                  foldthatfails = 
+                      transduceM utf8E (L.generalize L.list)
+                  inputs = 
+                      map fromString ["invalid \xc3\x28 sequence","xxx","zzz","___"]
+                  fallbackfold =
+                      bisectM (chunkedSplitAt 4) (reifyM id) ignore (L.generalize L.list)
+               r <- L.foldM (quiesceWith fallbackfold foldthatfails) inputs 
+               assertEqual 
+                   mempty 
+                   (Left ('C',4))
+                   (first (bimap (head . show) (SFM.length . mconcat)) r))
         ]   
     ]
 
