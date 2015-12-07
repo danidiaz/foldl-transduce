@@ -293,7 +293,7 @@ data ParagraphsState =
     newspace from the start of each line.
 
 >>> map mconcat (L.fold (folds paragraphs L.list L.list) (map T.pack [" \n aaa","\naa ", " \n\nbb\n"]))
-[]
+["aaa\naa  \n","bb\n"]
 
     Used with 'L.transduce', it removes empty lines and trims newspace from the
     start of each line.
@@ -324,26 +324,74 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
                     ++
                     if T.last nonEmptyChunk == '\n' then [mempty] else mempty
             in (init splitted, last splitted) -- unsafe with empty lists!!!
-        advance :: (ParagraphsState, NonEmpty [T.Text]) -> T.Text -> (ParagraphsState, NonEmpty [T.Text])
+        advance 
+            :: (ParagraphsState, NonEmpty [T.Text]) 
+            -> T.Text 
+            -> (ParagraphsState, NonEmpty [T.Text])
         advance (s,outputs) i = 
             case (s, blank i) of
-                (SkippingAfterStreamStart, True) -> (SkippingAfterStreamStart,outputs)
-                (SkippingAfterStreamStart, False) -> (SkippingAfterNewline,prepend ["\n",T.stripStart i] outputs) 
-                (SkippingAfterNewline, True) -> (SkippingAfterBlankLine, outputs) 
-                (SkippingAfterNewline, False) -> (SkippingAfterNewline,prepend ["\n",T.stripStart i] outputs) 
-                (SkippingAfterBlankLine, True) -> (SkippingAfterBlankLine,outputs) 
-                (SkippingAfterBlankLine, False) -> (SkippingAfterNewline, prepend ["\n",T.stripStart i] (NonEmpty.cons [] outputs)) 
-                (ContinuingNonemptyLine, _) -> (SkippingAfterNewline,prepend ["\n",i] outputs)
-        advanceLast :: (ParagraphsState, NonEmpty [T.Text]) -> T.Text -> (ParagraphsState, NonEmpty [T.Text])
+                (SkippingAfterStreamStart, True) -> 
+                    (,) 
+                    SkippingAfterStreamStart 
+                    outputs
+                (SkippingAfterStreamStart, False) -> 
+                    (,)
+                    SkippingAfterNewline
+                    (prepend ["\n",T.stripStart i] outputs) 
+                (SkippingAfterNewline, True) -> 
+                    (,) 
+                    SkippingAfterBlankLine 
+                    outputs 
+                (SkippingAfterNewline, False) -> 
+                    (,)
+                    SkippingAfterNewline
+                    (prepend ["\n",T.stripStart i] outputs)
+                (SkippingAfterBlankLine, True) -> 
+                    (,) 
+                    SkippingAfterBlankLine 
+                    outputs 
+                (SkippingAfterBlankLine, False) -> 
+					(,)
+                    SkippingAfterNewline
+                    (prepend ["\n",T.stripStart i] (NonEmpty.cons [] outputs)) 
+                (ContinuingNonemptyLine, _) -> 
+					(,)
+                    SkippingAfterNewline
+                    (prepend ["\n",i] outputs)
+        advanceLast 
+                :: (ParagraphsState, NonEmpty [T.Text]) 
+                -> T.Text 
+                -> (ParagraphsState, NonEmpty [T.Text])
         advanceLast (s,outputs) i = 
             case (s, blank i) of
-                (SkippingAfterStreamStart, True) -> (SkippingAfterStreamStart,outputs)
-                (SkippingAfterStreamStart, False) -> (ContinuingNonemptyLine,prepend [T.stripStart i] outputs)
-                (SkippingAfterNewline, True) -> (SkippingAfterNewline,outputs)
-                (SkippingAfterNewline, False) -> (ContinuingNonemptyLine,prepend [T.stripStart i] outputs)
-                (SkippingAfterBlankLine, True) -> (SkippingAfterBlankLine,outputs) 
-                (SkippingAfterBlankLine, False) -> (ContinuingNonemptyLine,prepend [T.stripStart i] (NonEmpty.cons [] outputs))
-                (ContinuingNonemptyLine, _) -> (ContinuingNonemptyLine,prepend [i] outputs)
+                (SkippingAfterStreamStart, True) -> 
+					(,) 
+                    SkippingAfterStreamStart 
+                    outputs
+                (SkippingAfterStreamStart, False) -> 
+					(,)
+                    ContinuingNonemptyLine
+					(prepend [T.stripStart i] outputs)
+                (SkippingAfterNewline, True) -> 
+					(,) 
+                    SkippingAfterNewline 
+                    outputs
+                (SkippingAfterNewline, False) -> 
+					(,)
+                    ContinuingNonemptyLine
+					(prepend [T.stripStart i] outputs)
+                (SkippingAfterBlankLine, True) -> 
+					(,)
+                    SkippingAfterBlankLine
+					outputs 
+                (SkippingAfterBlankLine, False) -> 
+					(,)
+                    ContinuingNonemptyLine
+                    (prepend [T.stripStart i] (NonEmpty.cons [] outputs))
+                (ContinuingNonemptyLine, _) -> 
+					(,)
+                    ContinuingNonemptyLine
+					(prepend [i] outputs)
         prepend :: [a] -> NonEmpty [a] -> NonEmpty [a]
         prepend as (as':| rest) = (as ++ as') :| rest
 
