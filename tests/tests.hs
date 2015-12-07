@@ -37,6 +37,10 @@ instance Arbitrary WordQC where
 testCaseEq :: (Eq a, Show a) => TestName -> a -> a -> TestTree
 testCaseEq name a1 a2 = testCase name (assertEqual "" a1 a2)
 
+
+{- $paragraphs
+
+-}
 paragraphsBaseline 
     :: T.Text -> [T.Text] 
 paragraphsBaseline =  
@@ -44,7 +48,29 @@ paragraphsBaseline =
     . filter (not . null) 
     . Split.splitWhen blank 
     . T.lines
+    
+-- (paragraphs,chunks)
+splittedParagraphs :: T.Text -> [Int] -> [([T.Text],[T.Text])]
+splittedParagraphs txt splitsizes =   
+    let 
+        splitted = paragraphsBaseline txt
+    in 
+    zip (repeat splitted) (map (flip T.chunksOf txt) splitsizes)
 
+paragraphsUnderTest
+    :: [T.Text] -> [T.Text] 
+paragraphsUnderTest txt =
+    map mconcat (L.fold (folds paragraphs L.list L.list) txt)
+
+paragraph01 :: T.Text
+paragraph01 = 
+    T.pack 
+    "  \n \n\n \n \n \
+    \a aa aaa \nb bb bb \n \
+    \ ccc \n\n  \n \n\n ccc\     
+    \ \n \n \nd\n\n\ne \
+    \\n" 
+    
 tests :: TestTree
 tests = 
     testGroup "Tests" 
@@ -101,6 +127,13 @@ tests =
                        x -> x) ==
                     (fmap TL.fromChunks (L.fold (folds words L.list L.list) tchunks)))
             ]
+        ],
+        testGroup "paragraphs" 
+        [
+            testCase "paragraphs01"
+                (sequence_ 
+                    ((map (\(x,y) -> assertEqual "" x (paragraphsUnderTest y))) 
+                         (splittedParagraphs paragraph01 [1..7])))
         ],
         testGroup "quiesceWith"  
         [
