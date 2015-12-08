@@ -5,7 +5,7 @@ import Data.Char
 import Data.String hiding (lines,words)
 import Data.Monoid
 import Data.Bifunctor
-import qualified Data.List (intersperse)
+import qualified Data.List (intersperse,splitAt)
 import qualified Data.List.Split as Split
 import qualified Data.Monoid.Factorial as SFM
 import Test.Tasty
@@ -91,6 +91,15 @@ instance Arbitrary TextChunksA where
                            in 
                            partition (point:accum) rest xs
                 partition _ _ [] = error "never happens"
+    shrink (TextChunksA texts) = 
+        let removeIndex i xs = 
+                let (xs',xs'') = Data.List.splitAt i xs
+                in xs' ++ tail xs'' 
+            l = length texts
+        in 
+        if l == 1 
+           then []
+           else map (\i -> TextChunksA (removeIndex i texts)) [0..l-1] 
 
 paragraphsBaseline 
     :: T.Text -> [T.Text] 
