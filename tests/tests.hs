@@ -5,6 +5,7 @@ import Data.Char
 import Data.String hiding (lines,words)
 import Data.Monoid
 import Data.Bifunctor
+import qualified Data.List (intersperse)
 import qualified Data.List.Split as Split
 import qualified Data.Monoid.Factorial as SFM
 import Test.Tasty
@@ -41,10 +42,18 @@ testCaseEq name a1 a2 = testCase name (assertEqual "" a1 a2)
 {- $paragraphs
 
 -}
+nl :: T.Text
+nl = T.pack "\n"
+
 paragraphsBaseline 
     :: T.Text -> [T.Text] 
 paragraphsBaseline =  
-      map mconcat 
+      map T.unlines
+     .map (map T.stripStart)
+    . map T.lines
+    . map mconcat 
+    . map (`mappend` [nl])
+    . map (Data.List.intersperse nl)
     . filter (not . null) 
     . Split.splitWhen blank 
     . T.lines
@@ -66,8 +75,8 @@ paragraph01 :: T.Text
 paragraph01 = 
     T.pack 
     "  \n \n\n \n \n \
-    \a aa aaa \nb bb bb \n \
-    \ ccc \n\n  \n \n\n ccc\     
+    \a aa aaa \nb bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb bb \n \
+    \ ccccccccccccccccccccccc cccccccc \n\n  \n \n\n ccc\     
     \ \n \n \nd\n\n\ne \
     \\n" 
     
