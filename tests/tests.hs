@@ -40,9 +40,19 @@ testCaseEq name a1 a2 = testCase name (assertEqual "" a1 a2)
 blank :: T.Text -> Bool
 blank = T.all isSpace
 
+nl :: T.Text
+nl = T.pack "\n"
+
+sp :: T.Text
+sp = T.pack " "
+
+c :: T.Text
+c = T.pack "c"
+
 {- $words
 
 -}
+
 newtype WordA = WordA { getWord :: T.Text } deriving (Show)
 
 instance Arbitrary WordA where
@@ -60,10 +70,27 @@ newtype TextChunksA = TextChunksA { getChunks :: [T.Text] } deriving (Show)
 
 instance Arbitrary TextChunksA where
     arbitrary = flip suchThat (not . blank . mconcat . getChunks) (do
-        return (TextChunksA [T.pack "aaa"]))
-
-nl :: T.Text
-nl = T.pack "\n"
+        TextChunksA <$> partz)
+            where
+                chunkz = frequency [
+                      (20::Int, flip T.replicate sp <$> choose (1,40)) 
+                    , (20, flip T.replicate sp <$> choose (1,3)) 
+                    , (50, pure nl)
+                    , (20, flip T.replicate c <$> choose (1,30))
+                    , (20, flip T.replicate c <$> choose (1,3))
+                    ]
+                combined = mconcat <$> vectorOf 40 chunkz 
+                partitions = infiniteListOf (choose (1::Int,7))
+                partz = partition [] <$> combined <*> partitions
+                partition :: [T.Text] -> T.Text -> [Int] -> [T.Text]
+                partition accum text (x:xs) =
+                    if x >= T.length text    
+                       then reverse (text:accum)
+                       else 
+                           let (point,rest) = T.splitAt x text 
+                           in 
+                           partition (point:accum) rest xs
+                partition _ _ [] = error "never happens"
 
 paragraphsBaseline 
     :: T.Text -> [T.Text] 
@@ -162,7 +189,14 @@ tests =
             testCase "paragraphs01"
                 (sequence_ 
                     ((map (\(x,y) -> assertEqual "" x (paragraphsUnderTest y))) 
-                         (splittedParagraphs paragraph01 [1..7])))
+                         (splittedParagraphs paragraph01 [1..7]))),
+            testGroup "quickcheck" 
+            [ 
+                testProperty "quickcheck1" (\(TextChunksA chunks) ->
+                        paragraphsUnderTest chunks
+                        ==
+                        paragraphsBaseline (mconcat chunks))
+            ]
         ],
         testGroup "quiesceWith"  
         [
