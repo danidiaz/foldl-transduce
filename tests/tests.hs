@@ -27,32 +27,37 @@ import Control.Foldl.Transduce.Textual
 cabal repl tests
 :t sample
 sample :: Show a => Gen a -> IO ()
-sample (arbitrary :: Gen WordQC)
+sample (arbitrary :: Gen WordA)
 
 -}
 
 main :: IO ()
 main = defaultMain tests
 
+testCaseEq :: (Eq a, Show a) => TestName -> a -> a -> TestTree
+testCaseEq name a1 a2 = testCase name (assertEqual "" a1 a2)
+
 blank :: T.Text -> Bool
 blank = T.all isSpace
 
-newtype WordQC = WordQC { getWordQC :: T.Text } deriving (Show)
+{- $words
 
-instance Arbitrary WordQC where
+-}
+newtype WordA = WordA { getWord :: T.Text } deriving (Show)
+
+instance Arbitrary WordA where
     arbitrary = do
         firstChar <- oneof [pure ' ', pure '\n', arbitrary]
         lastChar <- oneof [pure ' ', pure '\n', arbitrary]
         middle <- listOf (frequency [(1,pure ' '),(4,arbitrary)])
-        return (WordQC (T.pack (firstChar : (middle ++ [lastChar]))))
-
-testCaseEq :: (Eq a, Show a) => TestName -> a -> a -> TestTree
-testCaseEq name a1 a2 = testCase name (assertEqual "" a1 a2)
-
+        return (WordA (T.pack (firstChar : (middle ++ [lastChar]))))
 
 {- $paragraphs
 
 -}
+
+newtype ParagraphA = ParagraphA { getParagraphA :: T.Text } deriving (Show)
+
 nl :: T.Text
 nl = T.pack "\n"
 
@@ -140,7 +145,7 @@ tests =
             testGroup "quickcheck" 
             [ 
                 testProperty "quickcheck1" (\chunks -> 
-                    let tchunks = fmap getWordQC chunks 
+                    let tchunks = fmap getWord chunks 
                     in
                     (case TL.words (TL.fromChunks tchunks) of
                        [] -> [mempty]
