@@ -56,7 +56,11 @@ instance Arbitrary WordA where
 
 -}
 
-newtype ParagraphA = ParagraphA { getParagraphA :: T.Text } deriving (Show)
+newtype ParagraphA = ParagraphA { getParagraph :: T.Text } deriving (Show)
+
+instance Arbitrary ParagraphA where
+    arbitrary = flip suchThat (not . blank . getParagraph) (do
+        return (ParagraphA (T.pack "aaa")))
 
 nl :: T.Text
 nl = T.pack "\n"
