@@ -56,11 +56,11 @@ instance Arbitrary WordA where
 
 -}
 
-newtype ParagraphA = ParagraphA { getParagraph :: T.Text } deriving (Show)
+newtype TextChunksA = TextChunksA { getChunks :: [T.Text] } deriving (Show)
 
-instance Arbitrary ParagraphA where
-    arbitrary = flip suchThat (not . blank . getParagraph) (do
-        return (ParagraphA (T.pack "aaa")))
+instance Arbitrary TextChunksA where
+    arbitrary = flip suchThat (not . blank . mconcat . getChunks) (do
+        return (TextChunksA [T.pack "aaa"]))
 
 nl :: T.Text
 nl = T.pack "\n"
@@ -148,7 +148,7 @@ tests =
         [ 
             testGroup "quickcheck" 
             [ 
-                testProperty "quickcheck1" (\chunks -> 
+                testProperty "quickcheck1" (\chunks -> -- list of words 
                     let tchunks = fmap getWord chunks 
                     in
                     (case TL.words (TL.fromChunks tchunks) of
