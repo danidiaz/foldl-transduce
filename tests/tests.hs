@@ -20,6 +20,17 @@ import Control.Foldl.Transduce
 import Control.Foldl.Transduce.Text
 import Control.Foldl.Transduce.Textual
 
+{- $quickcheck
+
+   Notes for quickchecking on the REPL:
+
+cabal repl tests
+:t sample
+sample :: Show a => Gen a -> IO ()
+sample (arbitrary :: Gen WordQC)
+
+-}
+
 main :: IO ()
 main = defaultMain tests
 
