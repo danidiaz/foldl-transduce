@@ -136,6 +136,9 @@ paragraph01 =
     \ \n \n \nd\n\n\ne \
     \\n" 
     
+paragraph02 :: T.Text
+paragraph02 = T.pack " cc  "
+
 tests :: TestTree
 tests = 
     testGroup "Tests" 
@@ -199,6 +202,10 @@ tests =
                 (sequence_ 
                     ((map (\(x,y) -> assertEqual "" x (paragraphsUnderTest y))) 
                          (splittedParagraphs paragraph01 [1..7]))),
+            testCase "paragraphs02"
+                (sequence_ 
+                    ((map (\(x,y) -> assertEqual "" x (paragraphsUnderTest y))) 
+                         (splittedParagraphs paragraph02 [1..5]))),
             testGroup "quickcheck" 
             [ 
                 testProperty "quickcheck1" (\(TextChunksA chunks) ->
