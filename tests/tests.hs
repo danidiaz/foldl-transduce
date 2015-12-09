@@ -113,7 +113,14 @@ paragraphsBaseline =
     . filter (not . null) 
     . Split.splitWhen blank 
     . T.lines
-    
+
+ignoreLastNewline :: [T.Text] -> [T.Text]
+ignoreLastNewline ts = 
+    let 
+        lastt = last ts
+        lastt' = if T.last lastt == '\n' then T.init lastt else lastt 
+    in init ts ++ [lastt']
+
 -- (paragraphs,chunks)
 splittedParagraphs :: T.Text -> [Int] -> [([T.Text],[T.Text])]
 splittedParagraphs txt splitsizes =   
@@ -200,18 +207,18 @@ tests =
         [
             testCase "paragraphs01"
                 (sequence_ 
-                    ((map (\(x,y) -> assertEqual "" x (paragraphsUnderTest y))) 
+                    ((map (\(x,y) -> assertEqual "" (ignoreLastNewline x) (ignoreLastNewline (paragraphsUnderTest y)))) 
                          (splittedParagraphs paragraph01 [1..7]))),
             testCase "paragraphs02"
                 (sequence_ 
-                    ((map (\(x,y) -> assertEqual "" x (paragraphsUnderTest y))) 
+                    ((map (\(x,y) -> assertEqual "" (ignoreLastNewline x) (ignoreLastNewline (paragraphsUnderTest y)))) 
                          (splittedParagraphs paragraph02 [1..5]))),
             testGroup "quickcheck" 
             [ 
                 testProperty "quickcheck1" (\(TextChunksA chunks) ->
-                        paragraphsUnderTest chunks
+                        ignoreLastNewline (paragraphsUnderTest chunks)
                         ==
-                        paragraphsBaseline (mconcat chunks))
+                        ignoreLastNewline (paragraphsBaseline (mconcat chunks)))
             ]
         ],
         testGroup "quiesceWith"  
