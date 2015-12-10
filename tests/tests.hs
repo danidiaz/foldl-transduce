@@ -104,9 +104,7 @@ instance Arbitrary TextChunksA where
 paragraphsBaseline 
     :: T.Text -> [T.Text] 
 paragraphsBaseline =  
-      map T.unlines
-     .map (map T.stripStart)
-    . map T.lines
+      map (T.unlines . map T.stripStart . T.lines)
     . map mconcat 
     . map (`mappend` [nl])
     . map (Data.List.intersperse nl)
@@ -206,13 +204,15 @@ tests =
         testGroup "paragraphs" 
         [
             testCase "paragraphs01"
-                (sequence_ 
-                    ((map (\(x,y) -> assertEqual "" (ignoreLastNewline x) (ignoreLastNewline (paragraphsUnderTest y)))) 
-                         (splittedParagraphs paragraph01 [1..7]))),
-            testCase "paragraphs02"
-                (sequence_ 
-                    ((map (\(x,y) -> assertEqual "" (ignoreLastNewline x) (ignoreLastNewline (paragraphsUnderTest y)))) 
-                         (splittedParagraphs paragraph02 [1..5]))),
+                (mapM_
+                    (\(x,y) -> assertEqual "" (ignoreLastNewline x) (ignoreLastNewline (paragraphsUnderTest y))) 
+                    (splittedParagraphs paragraph01 [1..7])),
+            testCaseEq "newlineAtEnd"
+                (map T.pack ["aa\n"]) 
+                (paragraphsUnderTest (map T.pack ["a","a","\n"])),
+            testCaseEq "noNewlineAtEnd"
+                (map T.pack ["aa"]) 
+                (paragraphsUnderTest (map T.pack ["a","a"])),
             testGroup "quickcheck" 
             [ 
                 testProperty "quickcheck1" (\(TextChunksA chunks) ->
