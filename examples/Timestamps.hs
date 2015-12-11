@@ -25,7 +25,7 @@ import "time" Data.Time
 import qualified "foldl" Control.Foldl as L
 import "foldl-transduce" Control.Foldl.Transduce
 import "foldl-transduce" Control.Foldl.Transduce.Text (utf8lenient,lines,newline)
-import "foldl-transduce" Control.Foldl.Transduce.ByteString.IO (driveHandle,toHandle)
+import "foldl-transduce" Control.Foldl.Transduce.ByteString (drainHandle,chunkSizeDefault,toHandle)
 
 import System.IO
 
@@ -34,9 +34,12 @@ timestamp = liftM (return . T.pack . formatTime defaultTimeLocale "%M m %S s | "
 
 main :: IO ()
 main = 
-    driveHandle (withEncodeDecode addTimestamps (toHandle stderr)) 2048 stdin
+    driveHandle (withEncodeDecode stderr) chunkSizeDefault stdin
   where
-    withEncodeDecode t f = 
-        transduceM utf8lenient (t (L.premapM T.encodeUtf8 f))
+    withEncodeDecode = 
+          transduceM utf8lenient 
+        . addTimestamps 
+        . L.premapM T.encodeUtf8
+        . toHandle
     addTimestamps = groupsM lines (surroundIO timestamp (return ["\n"]))
 
