@@ -34,7 +34,7 @@ timestamp = liftM (return . T.pack . formatTime defaultTimeLocale "%M m %S s | "
 
 main :: IO ()
 main = 
-    driveHandle (withEncodeDecode stderr) chunkSizeDefault stdin
+    drainHandle (withEncodeDecode stderr) chunkSizeDefault stdin
   where
     withEncodeDecode = 
           transduceM utf8lenient 

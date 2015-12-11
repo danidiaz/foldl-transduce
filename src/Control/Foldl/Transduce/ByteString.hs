@@ -19,8 +19,8 @@ module Control.Foldl.Transduce.ByteString (
 
 import qualified Control.Foldl as L
 import Control.Foldl.Transduce 
-import Control.Foldl.Transduce.ByteString.IO
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Builder as B
 import Control.Monad.IO.Class
 import System.IO
 import Data.ByteString.Lazy.Internal (defaultChunkSize)
@@ -46,3 +46,43 @@ chunkSize = ChunkSize
 
 chunkSizeDefault :: ChunkSize
 chunkSizeDefault = chunkSize defaultChunkSize
+
+driveHandle :: (MonadIO m,ToFoldM m f) 
+            => f B.ByteString r 
+            -> Int -- ^ max chunk size
+            -> Handle 
+            -> m r 
+driveHandle (toFoldM -> f) chunkSize handle = 
+    L.impurely consumeFunc f (B.hGetSome handle chunkSize,hIsEOF handle)
+    where
+        -- adapted from foldM in Pipes.Prelude
+        consumeFunc step begin done (readChunk,checkEOF) = do
+            x0 <- begin
+            loop x0
+              where
+                loop x = do
+                    atEOF <- liftIO checkEOF
+                    if atEOF 
+                       then done x 
+                       else do
+                           chunk <- liftIO readChunk
+                           x' <- step x chunk
+                           loop $! x'
+
+
+toHandle :: (MonadIO m) => Handle -> L.FoldM m B.ByteString ()
+toHandle handle = 
+    L.FoldM 
+    (\_ b -> liftIO (B.hPut handle b))  
+    (return ()) 
+    (\_ -> return ())
+
+
+toHandleBuilder :: (MonadIO m) => Handle -> L.FoldM m B.Builder ()
+toHandleBuilder handle = 
+    L.FoldM
+    (\_ b -> liftIO (B.hPutBuilder handle b)) 
+    (return ()) 
+    (\_ -> return ())
+
+
