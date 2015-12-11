@@ -62,7 +62,7 @@ import qualified Data.List.NonEmpty as NonEmpty
 
 {-| Builds a decoding 'Transducer' out of a stream-oriented decoding function
     from "Data.Text.Encoding" and an error handler from
-    "Data.Text.Encoding.Error".		
+    "Data.Text.Encoding.Error".        
 
 -}
 decoder :: (B.ByteString -> T.Decoding) -> T.OnDecodeError -> L.Transducer B.ByteString T.Text ()
@@ -80,7 +80,7 @@ decoder _step onLeftovers = L.Transducer step (Pair mempty _step) done
     onLeftovers' = onLeftovers "leftovers" Nothing
 
 {-| Builds a UTF8-decoding 'Transducer'. Takes an error handler from
-    "Data.Text.Encoding.Error".		
+    "Data.Text.Encoding.Error".        
 
 -}
 utf8 :: T.OnDecodeError -> L.Transducer B.ByteString T.Text ()
@@ -119,7 +119,7 @@ utf8strict :: L.Transducer B.ByteString T.Text ()
 utf8strict = utf8 T.strictDecode
 
 {-| Similar to 'decoder', but catches 'UnicodeException' in 'IO' and uses
-    'Control.Monad.Trans.Except' to communicate the error.		
+    'Control.Monad.Trans.Except' to communicate the error.        
 
 -}
 decoderE :: MonadIO m
@@ -148,7 +148,7 @@ decoderE next = L.TransducerM step (return (Pair mempty next')) done
         onLeftovers' = T.strictDecode "leftovers" Nothing
 
 {-| Like 'utf8strict', but catches 'UnicodeException' in 'IO' and uses
-    'Control.Monad.Trans.Except' to communicate the error.		
+    'Control.Monad.Trans.Except' to communicate the error.        
 
 >>> runExceptT $ L.foldM (transduceM utf8E (L.generalize L.list)) (map fromString ["invalid \xc3\x28 sequence"])
 Left Cannot decode byte '\x28': Data.Text.Internal.Encoding.streamDecodeUtf8With: Invalid UTF-8 stream
@@ -159,7 +159,7 @@ Left Cannot decode input: leftovers
 utf8E :: MonadIO m => L.TransducerM (ExceptT T.UnicodeException m) B.ByteString T.Text ()   
 utf8E = decoderE T.streamDecodeUtf8With
 
-{-| Appends a newline at the end of the stream.		
+{-| Appends a newline at the end of the stream.        
 
 >>> L.fold (transduce newline L.list) (map T.pack ["without","newline"])
 ["without","newline","\n"]
@@ -170,7 +170,7 @@ newline = L.surround [] ["\n"]
 blank :: T.Text -> Bool
 blank = Data.Text.all isSpace
 
-{-| Remove leading white space from a stream of 'Text'.		
+{-| Remove leading white space from a stream of 'Text'.        
 
 >>> L.fold (transduce stripStart L.list) (map T.pack ["   ","", "   text "])
 ["text "]
@@ -185,7 +185,7 @@ stripStart = L.Transducer step False done
                 else (True, [T.stripStart i],[])
         done _  = ((),[],[])
 
-{-| Remove trailing white space from a stream of 'Text'.		
+{-| Remove trailing white space from a stream of 'Text'.        
 
     __/BEWARE!/__ 
     This function naively accumulates in memory any arriving "blank blocks" of
@@ -351,11 +351,11 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
                     SkippingAfterBlankLine 
                     outputs 
                 (SkippingAfterBlankLine, False) -> 
-					(,)
+                    (,)
                     SkippingAfterNewline
                     (prepend ["\n",T.stripStart i] (NonEmpty.cons [] outputs)) 
                 (ContinuingNonemptyLine, _) -> 
-					(,)
+                    (,)
                     SkippingAfterNewline
                     (prepend ["\n",i] outputs)
         advanceLast 
@@ -365,33 +365,33 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
         advanceLast (s,outputs) i = 
             case (s, blank i) of
                 (SkippingAfterStreamStart, True) -> 
-					(,) 
+                    (,) 
                     SkippingAfterStreamStart 
                     outputs
                 (SkippingAfterStreamStart, False) -> 
-					(,)
+                    (,)
                     ContinuingNonemptyLine
-					(prepend [T.stripStart i] outputs)
+                    (prepend [T.stripStart i] outputs)
                 (SkippingAfterNewline, True) -> 
-					(,) 
+                    (,) 
                     SkippingAfterNewline 
                     outputs
                 (SkippingAfterNewline, False) -> 
-					(,)
+                    (,)
                     ContinuingNonemptyLine
-					(prepend [T.stripStart i] outputs)
+                    (prepend [T.stripStart i] outputs)
                 (SkippingAfterBlankLine, True) -> 
-					(,)
+                    (,)
                     SkippingAfterBlankLine
-					outputs 
+                    outputs 
                 (SkippingAfterBlankLine, False) -> 
-					(,)
+                    (,)
                     ContinuingNonemptyLine
                     (prepend [T.stripStart i] (NonEmpty.cons [] outputs))
                 (ContinuingNonemptyLine, _) -> 
-					(,)
+                    (,)
                     ContinuingNonemptyLine
-					(prepend [i] outputs)
+                    (prepend [i] outputs)
         prepend :: [a] -> NonEmpty [a] -> NonEmpty [a]
         prepend as (as':| rest) = (as ++ as') :| rest
 
