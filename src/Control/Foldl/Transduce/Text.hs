@@ -467,7 +467,7 @@ splitTextStep (txt, s) = Just (case s of
 --unfoldrx = unfoldr . fmap (fmap (swap . fmap swap . duplicate . swap))
 
 unfoldry :: (b -> Maybe (a, b)) -> b -> [(a, b)]
-unfoldry f z = unfoldr (fmap (\t@(_, b) -> (t, b)) . f) z
+unfoldry f = unfoldr (fmap (\t@(_, b) -> (t, b)) . f)
 ------------------------------------------------------------------------------
 
 {- $reexports
