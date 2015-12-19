@@ -28,6 +28,7 @@ module Control.Foldl.Transduce.Text (
 
 import Prelude hiding (lines,words)
 import Data.Char
+import Data.List (unfoldr)
 import Data.Monoid (mempty)
 import Data.Foldable (foldMap,foldl')
 import qualified Data.ByteString as B
@@ -462,6 +463,11 @@ splitTextStep (txt, s) = Just (case s of
                         let newstate = InsideDelimiter (howmuchleft - T.length common) delm xs 
                         in ((T.empty, newstate), (sufftext, newstate)))
 
+--unfoldrx :: (b -> Maybe (a, b)) -> b -> [(a, b)]
+--unfoldrx = unfoldr . fmap (fmap (swap . fmap swap . duplicate . swap))
+
+unfoldry :: (b -> Maybe (a, b)) -> b -> [(a, b)]
+unfoldry f z = unfoldr (fmap (\t@(_, b) -> (t, b)) . f) z
 ------------------------------------------------------------------------------
 
 {- $reexports
