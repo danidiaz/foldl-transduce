@@ -395,6 +395,73 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
         prepend :: [a] -> NonEmpty [a] -> NonEmpty [a]
         prepend as (as':| rest) = (as ++ as') :| rest
 
+
+data SectionsState = 
+      OutsideDelimiter [T.Text]
+    | InsideDelimiter Int T.Text [T.Text]
+
+sections :: [T.Text] -> L.Transducer T.Text T.Text ()
+sections seps = L.Transducer step (OutsideDelimiter seps) done 
+    where
+        step (OutsideDelimiter []) txt =
+            (OutsideDelimiter [],[txt],[])
+        step tstate txt
+            | Data.Text.null txt = 
+                (tstate,[],[])
+            | otherwise = 
+                undefined
+        done _ = 
+            ((),[],[])
+        unfoldstep :: T.Text -> T.Text -> Maybe (T.Text,T.Text)
+        unfoldstep header txt | T.null txt = Nothing
+        unfoldstep header txt = Just (T.breakOn header txt)
+        prepend :: [a] -> NonEmpty [a] -> NonEmpty [a]
+        prepend as (as':| rest) = (as ++ as') :| rest
+
+-- found using Hayoo!
+-- http://hackage.haskell.org/package/cryptol-2.2.5/docs/src/Cryptol-TypeCheck-AST.html#splitWhile
+splitWhile :: (a -> Maybe (b,a)) -> a -> ([b],a)
+splitWhile f e = case f e of
+    Nothing     -> ([], e)
+    Just (x,e1) -> let (xs,e2) = splitWhile f e1
+                   in (x:xs,e2)
+
+splitTextStep :: (T.Text, SectionsState) -> Maybe ((T.Text, SectionsState), (T.Text, SectionsState))
+splitTextStep (txt, _) | T.null txt = Nothing
+splitTextStep (txt, s) = Just (case s of
+    OutsideDelimiter [] -> 
+        ((txt,s),(T.empty,s))
+    o@(OutsideDelimiter (x:xs)) -> 
+        let (before,after) = T.breakOn x txt 
+        in if T.null after -- not present
+           then ((before,o),(after,o))
+           else case filter (flip T.isSuffixOf txt) (reverse (tail (T.inits x))) of -- decreasing size
+              [] -> 
+                  let o' = OutsideDelimiter xs 
+                  in ((before,o'),(after,o')) -- no partial match
+              part:_ -> 
+                  let delimlen = T.length x
+                      partlen = T.length part 
+                      txtlen = T.length txt
+                      restlen = txtlen - partlen
+                      (before',after') = T.splitAt restlen txt
+                      o' = InsideDelimiter (delimlen - partlen) x xs 
+                  in ((before',o'),(after',o'))
+    InsideDelimiter howmuchleft delm xs ->
+        let delm' = T.takeEnd howmuchleft delm 
+        in case T.commonPrefixes delm' txt of
+            Nothing -> 
+                let newstate = OutsideDelimiter (delm:xs)
+                in ((delm', newstate),(txt, newstate))
+            Just (common,suffdel,sufftext) -> 
+                case () of
+                    _ | T.null suffdel -> 
+                        let newstate = OutsideDelimiter xs 
+                        in ((delm, newstate), (sufftext,newstate))
+                    _ | otherwise -> 
+                        let newstate = InsideDelimiter (howmuchleft - T.length common) delm xs 
+                        in ((T.empty, newstate), (sufftext, newstate)))
+
 ------------------------------------------------------------------------------
 
 {- $reexports
