@@ -419,14 +419,6 @@ sections seps = L.Transducer step (OutsideDelimiter seps) done
         prepend :: [a] -> NonEmpty [a] -> NonEmpty [a]
         prepend as (as':| rest) = (as ++ as') :| rest
 
--- found using Hayoo!
--- http://hackage.haskell.org/package/cryptol-2.2.5/docs/src/Cryptol-TypeCheck-AST.html#splitWhile
-splitWhile :: (a -> Maybe (b,a)) -> a -> ([b],a)
-splitWhile f e = case f e of
-    Nothing     -> ([], e)
-    Just (x,e1) -> let (xs,e2) = splitWhile f e1
-                   in (x:xs,e2)
-
 splitTextStep :: (T.Text, SectionsState) -> Maybe (T.Text, (T.Text, SectionsState))
 splitTextStep (txt, _) | T.null txt = Nothing
 splitTextStep (txt, s) = Just (case s of
@@ -462,9 +454,6 @@ splitTextStep (txt, s) = Just (case s of
                     _ | otherwise -> 
                         let newstate = InsideDelimiter (howmuchleft - T.length common) delm xs 
                         in (T.empty,(sufftext, newstate)))
-
---unfoldrx :: (b -> Maybe (a, b)) -> b -> [(a, b)]
---unfoldrx = unfoldr . fmap (fmap (swap . fmap swap . duplicate . swap))
 
 unfoldWithState :: (b -> Maybe (a, b)) -> b -> [(a, b)]
 unfoldWithState f = unfoldr (fmap (\t@(_, b) -> (t, b)) . f)
