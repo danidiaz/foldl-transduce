@@ -427,19 +427,19 @@ splitWhile f e = case f e of
     Just (x,e1) -> let (xs,e2) = splitWhile f e1
                    in (x:xs,e2)
 
-splitTextStep :: (T.Text, SectionsState) -> Maybe ((T.Text, SectionsState), (T.Text, SectionsState))
+splitTextStep :: (T.Text, SectionsState) -> Maybe (T.Text, (T.Text, SectionsState))
 splitTextStep (txt, _) | T.null txt = Nothing
 splitTextStep (txt, s) = Just (case s of
     OutsideDelimiter [] -> 
-        ((txt,s),(T.empty,s))
+        (txt,(T.empty,s))
     o@(OutsideDelimiter (x:xs)) -> 
         let (before,after) = T.breakOn x txt 
         in if T.null after -- not present
-           then ((before,o),(after,o))
+           then (before,(after,o))
            else case filter (flip T.isSuffixOf txt) (reverse (tail (T.inits x))) of -- decreasing size
               [] -> 
                   let o' = OutsideDelimiter xs 
-                  in ((before,o'),(after,o')) -- no partial match
+                  in (before,(after,o')) -- no partial match
               part:_ -> 
                   let delimlen = T.length x
                       partlen = T.length part 
@@ -447,27 +447,28 @@ splitTextStep (txt, s) = Just (case s of
                       restlen = txtlen - partlen
                       (before',after') = T.splitAt restlen txt
                       o' = InsideDelimiter (delimlen - partlen) x xs 
-                  in ((before',o'),(after',o'))
+                  in (before',(after',o'))
     InsideDelimiter howmuchleft delm xs ->
         let delm' = T.takeEnd howmuchleft delm 
         in case T.commonPrefixes delm' txt of
             Nothing -> 
                 let newstate = OutsideDelimiter (delm:xs)
-                in ((delm', newstate),(txt, newstate))
+                in (delm',(txt, newstate))
             Just (common,suffdel,sufftext) -> 
                 case () of
                     _ | T.null suffdel -> 
                         let newstate = OutsideDelimiter xs 
-                        in ((delm, newstate), (sufftext,newstate))
+                        in (delm,(sufftext,newstate))
                     _ | otherwise -> 
                         let newstate = InsideDelimiter (howmuchleft - T.length common) delm xs 
-                        in ((T.empty, newstate), (sufftext, newstate)))
+                        in (T.empty,(sufftext, newstate)))
 
 --unfoldrx :: (b -> Maybe (a, b)) -> b -> [(a, b)]
 --unfoldrx = unfoldr . fmap (fmap (swap . fmap swap . duplicate . swap))
 
-unfoldry :: (b -> Maybe (a, b)) -> b -> [(a, b)]
-unfoldry f = unfoldr (fmap (\t@(_, b) -> (t, b)) . f)
+unfoldWithState :: (b -> Maybe (a, b)) -> b -> [(a, b)]
+unfoldWithState f = unfoldr (fmap (\t@(_, b) -> (t, b)) . f)
+
 ------------------------------------------------------------------------------
 
 {- $reexports
