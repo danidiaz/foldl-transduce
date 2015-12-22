@@ -404,13 +404,13 @@ data SectionsState =
 sections :: [T.Text] -> L.Transducer T.Text T.Text ()
 sections seps = L.Transducer step (OutsideDelimiter seps) done 
     where
-        step (OutsideDelimiter []) txt =
-            (OutsideDelimiter [],[txt],[])
         step tstate txt
             | Data.Text.null txt = 
                 (tstate,[],[])
             | otherwise = 
-                undefined
+                let (emitted,fmap snd -> states) = Data.List.unzip (unfoldWithState splitTextStep (txt,tstate))
+                    finalState = foldl (flip const) tstate states
+                in (finalState, undefined, undefined)                        
         done _ = 
             ((),[],[])
         unfoldstep :: T.Text -> T.Text -> Maybe (T.Text,T.Text)
