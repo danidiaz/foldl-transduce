@@ -21,6 +21,7 @@ module Control.Foldl.Transduce.Text (
     ,   words
     ,   lines
     ,   paragraphs
+    ,   sections
         -- * Re-exports
         -- $reexports
     ,   module Control.Foldl.Transduce.Textual
@@ -406,13 +407,11 @@ sections seps = L.Transducer step (OutsideDelimiter seps) done
                 (tstate,[],[])
             | otherwise = 
                 let (emitted,fmap snd -> states) = Data.List.unzip (unfoldWithState splitTextStep (txt,tstate))
-                    finalState = foldl (flip const) tstate states
-                in (finalState, undefined, undefined)                        
+                    finalState = NonEmpty.last (tstate :| states)
+                    continuing :| following = foldl' (flip ($)) (pure []) emitted
+                in (finalState, continuing, following)                        
         done _ = 
             ((),[],[])
-        unfoldstep :: T.Text -> T.Text -> Maybe (T.Text,T.Text)
-        unfoldstep header txt | T.null txt = Nothing
-        unfoldstep header txt = Just (T.breakOn header txt)
 
 continue :: [a] -> NonEmpty [a] -> NonEmpty [a]
 continue as (as':| rest) = (as ++ as') :| rest
