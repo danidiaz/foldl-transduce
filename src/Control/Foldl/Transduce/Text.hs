@@ -402,14 +402,11 @@ data SectionsState =
 sections :: [T.Text] -> L.Transducer T.Text T.Text ()
 sections seps = L.Transducer step (OutsideDelimiter seps) done 
     where
-        step tstate txt
-            | Data.Text.null txt = 
-                (tstate,[],[])
-            | otherwise = 
-                let (emitted,fmap snd -> states) = Data.List.unzip (unfoldWithState splitTextStep (txt,tstate))
-                    finalState = NonEmpty.last (tstate :| states)
-                    continuing :| following = foldl' (flip ($)) (pure []) emitted
-                in (finalState, continuing, following)                        
+        step tstate txt =
+            let (emitted,fmap snd -> states) = Data.List.unzip (unfoldWithState splitTextStep (txt,tstate))
+                finalState = NonEmpty.last (tstate :| states)
+                continuing :| following = foldl' (flip ($)) (pure []) emitted
+            in (finalState, continuing, following)                        
         done _ = 
             ((),[],[])
 
@@ -419,7 +416,9 @@ continue as (as':| rest) = (as ++ as') :| rest
 separate :: [x] -> NonEmpty [x] -> NonEmpty [x]
 separate = NonEmpty.cons
 
-splitTextStep :: (T.Text, SectionsState) -> Maybe (NonEmpty [T.Text] -> NonEmpty [T.Text], (T.Text, SectionsState))
+splitTextStep 
+    :: (T.Text, SectionsState) 
+    -> Maybe (NonEmpty [T.Text] -> NonEmpty [T.Text], (T.Text, SectionsState))
 splitTextStep (txt, _) | T.null txt = Nothing
 splitTextStep (txt, s) = Just (case s of
     OutsideDelimiter [] -> 
