@@ -338,7 +338,7 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
                 (SkippingAfterStreamStart, False) -> 
                     (,)
                     SkippingAfterNewline
-                    (prepend ["\n",T.stripStart i] outputs) 
+                    (continue ["\n",T.stripStart i] outputs) 
                 (SkippingAfterNewline, True) -> 
                     (,) 
                     SkippingAfterBlankLine 
@@ -346,7 +346,7 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
                 (SkippingAfterNewline, False) -> 
                     (,)
                     SkippingAfterNewline
-                    (prepend ["\n",T.stripStart i] outputs)
+                    (continue ["\n",T.stripStart i] outputs)
                 (SkippingAfterBlankLine, True) -> 
                     (,) 
                     SkippingAfterBlankLine 
@@ -354,11 +354,11 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
                 (SkippingAfterBlankLine, False) -> 
                     (,)
                     SkippingAfterNewline
-                    (prepend ["\n",T.stripStart i] (NonEmpty.cons [] outputs)) 
+                    (continue ["\n",T.stripStart i] (NonEmpty.cons [] outputs)) 
                 (ContinuingNonemptyLine, _) -> 
                     (,)
                     SkippingAfterNewline
-                    (prepend ["\n",i] outputs)
+                    (continue ["\n",i] outputs)
         advanceLast 
                 :: (ParagraphsState, NonEmpty [T.Text]) 
                 -> T.Text 
@@ -372,7 +372,7 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
                 (SkippingAfterStreamStart, False) -> 
                     (,)
                     ContinuingNonemptyLine
-                    (prepend [T.stripStart i] outputs)
+                    (continue [T.stripStart i] outputs)
                 (SkippingAfterNewline, True) -> 
                     (,) 
                     SkippingAfterNewline 
@@ -380,7 +380,7 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
                 (SkippingAfterNewline, False) -> 
                     (,)
                     ContinuingNonemptyLine
-                    (prepend [T.stripStart i] outputs)
+                    (continue [T.stripStart i] outputs)
                 (SkippingAfterBlankLine, True) -> 
                     (,)
                     SkippingAfterBlankLine
@@ -388,14 +388,11 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
                 (SkippingAfterBlankLine, False) -> 
                     (,)
                     ContinuingNonemptyLine
-                    (prepend [T.stripStart i] (NonEmpty.cons [] outputs))
+                    (continue [T.stripStart i] (NonEmpty.cons [] outputs))
                 (ContinuingNonemptyLine, _) -> 
                     (,)
                     ContinuingNonemptyLine
-                    (prepend [i] outputs)
-        prepend :: [a] -> NonEmpty [a] -> NonEmpty [a]
-        prepend as (as':| rest) = (as ++ as') :| rest
-
+                    (continue [i] outputs)
 
 data SectionsState = 
       OutsideDelimiter [T.Text]
@@ -416,44 +413,47 @@ sections seps = L.Transducer step (OutsideDelimiter seps) done
         unfoldstep :: T.Text -> T.Text -> Maybe (T.Text,T.Text)
         unfoldstep header txt | T.null txt = Nothing
         unfoldstep header txt = Just (T.breakOn header txt)
-        prepend :: [a] -> NonEmpty [a] -> NonEmpty [a]
-        prepend as (as':| rest) = (as ++ as') :| rest
 
-splitTextStep :: (T.Text, SectionsState) -> Maybe (T.Text, (T.Text, SectionsState))
+continue :: [a] -> NonEmpty [a] -> NonEmpty [a]
+continue as (as':| rest) = (as ++ as') :| rest
+
+separate :: [x] -> NonEmpty [x] -> NonEmpty [x]
+separate = NonEmpty.cons
+
+splitTextStep :: (T.Text, SectionsState) -> Maybe (NonEmpty [T.Text] -> NonEmpty [T.Text], (T.Text, SectionsState))
 splitTextStep (txt, _) | T.null txt = Nothing
 splitTextStep (txt, s) = Just (case s of
     OutsideDelimiter [] -> 
-        (txt,(T.empty,s))
+        (continue [txt],(T.empty,s))
     o@(OutsideDelimiter (x:xs)) -> 
+        -- http://hackage.haskell.org/package/text-1.2.2.0/docs/Data-Text.html#v:breakOn
         let (before,after) = T.breakOn x txt 
         in if T.null after -- not present
-           then (before,(after,o))
-           else case filter (flip T.isSuffixOf txt) (reverse (tail (T.inits x))) of -- decreasing size
-              [] -> 
-                  let o' = OutsideDelimiter xs 
-                  in (before,(after,o')) -- no partial match
+           then case filter (flip T.isSuffixOf txt) (reverse (tail (T.inits x))) of -- decreasing size
+              [] -> (continue [before],(T.empty,o)) -- no partial match
               part:_ -> 
                   let delimlen = T.length x
                       partlen = T.length part 
                       txtlen = T.length txt
                       restlen = txtlen - partlen
                       (before',after') = T.splitAt restlen txt
-                      o' = InsideDelimiter (delimlen - partlen) x xs 
-                  in (before',(after',o'))
+                  in (continue [before'],(after',InsideDelimiter (delimlen - partlen) x xs))
+           else (separate [before],(after,OutsideDelimiter xs))
     InsideDelimiter howmuchleft delm xs ->
         let delm' = T.takeEnd howmuchleft delm 
+            -- http://hackage.haskell.org/package/text-1.2.2.0/docs/Data-Text.html#v:commonPrefixes 
         in case T.commonPrefixes delm' txt of
             Nothing -> 
                 let newstate = OutsideDelimiter (delm:xs)
-                in (delm',(txt, newstate))
+                in (continue [delm'],(txt, newstate))
             Just (common,suffdel,sufftext) -> 
                 case () of
                     _ | T.null suffdel -> 
                         let newstate = OutsideDelimiter xs 
-                        in (delm,(sufftext,newstate))
+                        in (separate [delm],(sufftext,newstate))
                     _ | otherwise -> 
                         let newstate = InsideDelimiter (howmuchleft - T.length common) delm xs 
-                        in (T.empty,(sufftext, newstate)))
+                        in (continue [],(sufftext, newstate)))
 
 unfoldWithState :: (b -> Maybe (a, b)) -> b -> [(a, b)]
 unfoldWithState f = unfoldr (fmap (\t@(_, b) -> (t, b)) . f)
