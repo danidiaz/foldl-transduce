@@ -405,7 +405,7 @@ sections seps = L.Transducer step (OutsideDelimiter seps) done
         step tstate txt =
             let (emitted,fmap snd -> states) = Data.List.unzip (unfoldWithState splitTextStep (txt,tstate))
                 finalState = NonEmpty.last (tstate :| states)
-                continuing :| following = foldl' (flip ($)) (pure []) emitted
+                continuing :| following = NonEmpty.reverse (fmap Data.List.reverse (foldl' (flip (either continue separate)) (pure []) emitted))
             in (finalState, continuing, following)                        
         done _ = 
             ((),[],[])
@@ -416,42 +416,43 @@ continue as (as':| rest) = (as ++ as') :| rest
 separate :: [x] -> NonEmpty [x] -> NonEmpty [x]
 separate = NonEmpty.cons
 
+-- Left <- continue, Right -> separate 
 splitTextStep 
     :: (T.Text, SectionsState) 
-    -> Maybe (NonEmpty [T.Text] -> NonEmpty [T.Text], (T.Text, SectionsState))
+    -> Maybe (Either [T.Text] [T.Text], (T.Text, SectionsState))
 splitTextStep (txt, _) | T.null txt = Nothing
 splitTextStep (txt, s) = Just (case s of
     OutsideDelimiter [] -> 
-        (continue [txt],(T.empty,s))
+        (Left [txt],(T.empty,s))
     o@(OutsideDelimiter (x:xs)) -> 
         -- http://hackage.haskell.org/package/text-1.2.2.0/docs/Data-Text.html#v:breakOn
         let (before,after) = T.breakOn x txt 
         in if T.null after -- not present
            then case filter (flip T.isSuffixOf txt) (reverse (tail (T.inits x))) of -- decreasing size
-              [] -> (continue [before],(T.empty,o)) -- no partial match
+              [] -> (Left [before],(T.empty,o)) -- no partial match
               part:_ -> 
                   let delimlen = T.length x
                       partlen = T.length part 
                       txtlen = T.length txt
                       restlen = txtlen - partlen
                       (before',after') = T.splitAt restlen txt
-                  in (continue [before'],(after',InsideDelimiter (delimlen - partlen) x xs))
-           else (separate [before],(after,OutsideDelimiter xs))
+                  in (Left [before'],(after',InsideDelimiter (delimlen - partlen) x xs))
+           else (Right [before],(after,OutsideDelimiter xs))
     InsideDelimiter howmuchleft delm xs ->
         let delm' = T.takeEnd howmuchleft delm 
             -- http://hackage.haskell.org/package/text-1.2.2.0/docs/Data-Text.html#v:commonPrefixes 
         in case T.commonPrefixes delm' txt of
             Nothing -> 
                 let newstate = OutsideDelimiter (delm:xs)
-                in (continue [delm'],(txt, newstate))
+                in (Left [delm'],(txt, newstate))
             Just (common,suffdel,sufftext) -> 
                 case () of
                     _ | T.null suffdel -> 
                         let newstate = OutsideDelimiter xs 
-                        in (separate [delm],(sufftext,newstate))
+                        in (Right [delm],(sufftext,newstate))
                     _ | otherwise -> 
                         let newstate = InsideDelimiter (howmuchleft - T.length common) delm xs 
-                        in (continue [],(sufftext, newstate)))
+                        in (Left [],(sufftext, newstate)))
 
 unfoldWithState :: (b -> Maybe (a, b)) -> b -> [(a, b)]
 unfoldWithState f = unfoldr (fmap (\t@(_, b) -> (t, b)) . f)
