@@ -398,6 +398,7 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
 data SectionsState = 
       OutsideDelimiter [T.Text]
     | InsideDelimiter Int T.Text [T.Text]
+    deriving (Show)
 
 sections :: [T.Text] -> L.Transducer T.Text T.Text ()
 sections seps = L.Transducer step (OutsideDelimiter seps) done 
@@ -416,7 +417,14 @@ continue as (as':| rest) = (as ++ as') :| rest
 separate :: [x] -> NonEmpty [x] -> NonEmpty [x]
 separate = NonEmpty.cons
 
--- Left <- continue, Right -> separate 
+
+{-| 		
+
+>>> splitTextStep (T.empty,OutsideDelimiter (map T.pack (["foo","bar","baz"])))
+Nothing
+
+-}
+
 splitTextStep 
     :: (T.Text, SectionsState) 
     -> Maybe (Either [T.Text] [T.Text], (T.Text, SectionsState))
