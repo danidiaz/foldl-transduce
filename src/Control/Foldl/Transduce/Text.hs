@@ -407,6 +407,9 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
 >>> map mconcat (L.fold (folds (sections (map T.pack ["#1\n","#2\n"])) L.list L.list) (map T.pack [" #1\naa\n#","2\nbb"]))
 [" ","aa\n","bb"]
 
+>>> map mconcat (L.fold (folds (sections (map T.pack ["1234"])) L.list L.list) (map T.pack [" 1","2","x","1","2","3","4","5"]))
+[" 12x","5"]
+
     Used with 'L.transduce', it simply removes all headings.
 -}
 sections :: [T.Text] -> L.Transducer T.Text T.Text ()
