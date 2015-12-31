@@ -29,8 +29,10 @@ module Control.Foldl.Transduce.Text (
 
 import Prelude hiding (lines,words)
 import Data.Char
+import Data.Bool
+import Data.Maybe
 import Data.List (unfoldr)
-import Data.Monoid (mempty)
+import Data.Monoid (mempty,(<>))
 import Data.Foldable (foldMap,foldl')
 import qualified Data.ByteString as B
 import qualified Data.Text 
@@ -396,20 +398,27 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
                     (continue [i] outputs)
 
 data SectionsState = 
-      OutsideDelimiter [T.Text]
-    | InsideDelimiter Int T.Text [T.Text]
+      Done
+    | Pending T.Text T.Text [T.Text] -- first is the accumulator
     deriving (Show)
 
 sections :: [T.Text] -> L.Transducer T.Text T.Text ()
-sections seps = L.Transducer step (OutsideDelimiter seps) done 
+sections seps = L.Transducer step (initialstate seps) done 
     where
         step tstate txt =
             let (emitted,fmap snd -> states) = Data.List.unzip (unfoldWithState splitTextStep (txt,tstate))
                 finalState = NonEmpty.last (tstate :| states)
-                continuing :| following = NonEmpty.reverse (fmap Data.List.reverse (foldl' (flip (either continue separate)) (pure []) emitted))
+                continuing :| following = NonEmpty.reverse (fmap Data.List.reverse (foldl' advance ([]:|[]) emitted))
             in (finalState, continuing, following)                        
-        done _ = 
+        advance :: NonEmpty [x] -> ([x],Bool) -> NonEmpty [x]
+        advance l (e,b) = bool id (separate []) b (continue e l)
+        done Done = 
             ((),[],[])
+        done (Pending acc _ _) =
+            ((),[acc],[])    
+        initialstate [] = Done
+        initialstate (x:xs) = Pending T.empty x xs
+
 
 continue :: [a] -> NonEmpty [a] -> NonEmpty [a]
 continue as (as':| rest) = (as ++ as') :| rest
@@ -420,48 +429,60 @@ separate = NonEmpty.cons
 
 {-| 		
 
->>> splitTextStep (T.empty,OutsideDelimiter (map T.pack (["foo","bar","baz"])))
-Nothing
+>>> splitTextStep (T.pack "x",Done)
+Just ((["x"],False),("",Done))
+
+>>> splitTextStep (T.pack "aabbcc",Pending T.empty (T.pack "bb") [])
+Just ((["aa"],True),("cc",Done))
+
+>>> splitTextStep (T.pack "cc",Pending (T.pack "bb") (T.pack "bbcc") [T.pack "nextsep"])
+Just (([""],True),("",Pending "" "nextsep" []))
+
+>>> splitTextStep (T.pack "xx",Pending (T.pack "bb") (T.pack "bbcc") [])
+Just ((["bbxx"],False),("",Pending "" "bbcc" []))
+
+>>> splitTextStep (T.pack "bbc",Pending (T.pack "xxx") (T.pack "bbcccc") [])
+Just ((["bbxx"],False),("",Pending "" "bbcc" []))
 
 -}
 
 splitTextStep 
     :: (T.Text, SectionsState) 
-    -> Maybe (Either [T.Text] [T.Text], (T.Text, SectionsState))
-splitTextStep (txt, _) | T.null txt = Nothing
-splitTextStep (txt, s) = Just (case s of
-    OutsideDelimiter [] -> 
-        (Left [txt],(T.empty,s))
-    o@(OutsideDelimiter (x:xs)) -> 
-        -- http://hackage.haskell.org/package/text-1.2.2.0/docs/Data-Text.html#v:breakOn
-        let (before,after) = T.breakOn x txt 
-        in if T.null after -- not present
-           then case filter (flip T.isSuffixOf txt) (reverse (tail (T.inits x))) of -- decreasing size
-              [] -> (Left [before],(T.empty,o)) -- no partial match
-              part:_ -> 
-                  let delimlen = T.length x
-                      partlen = T.length part 
-                      txtlen = T.length txt
-                      restlen = txtlen - partlen
-                      (before',after') = T.splitAt restlen txt
-                  in (Left [before'],(after',InsideDelimiter (delimlen - partlen) x xs))
-           else (Right [before],(after,OutsideDelimiter xs))
-    InsideDelimiter howmuchleft delm xs ->
-        let delm' = T.takeEnd howmuchleft delm 
-            -- http://hackage.haskell.org/package/text-1.2.2.0/docs/Data-Text.html#v:commonPrefixes 
-        in case T.commonPrefixes delm' txt of
-            Nothing -> 
-                let newstate = OutsideDelimiter (delm:xs)
-                in (Left [delm'],(txt, newstate))
-            Just (common,suffdel,sufftext) -> 
-                case () of
-                    _ | T.null suffdel -> 
-                        let newstate = OutsideDelimiter xs 
-                        in (Right [delm],(sufftext,newstate))
-                    _ | otherwise -> 
-                        let newstate = InsideDelimiter (howmuchleft - T.length common) delm xs 
-                        in (Left [],(sufftext, newstate)))
-
+    -> Maybe (([T.Text],Bool), (T.Text, SectionsState))
+splitTextStep (txt, _) | T.null txt           = Nothing
+splitTextStep (txt, Done)                     = Just (([txt],False),(T.empty,Done))
+splitTextStep (txt, Pending acc sep nextseps) = Just $
+    let combined    = acc <> txt
+        combinedlen = T.length combined
+        seplen      = T.length sep
+    in
+    if combinedlen < seplen
+       then 
+          (([],False),(T.empty,Pending combined sep nextseps)) -- not enough data!
+       else 
+          let (before,after) = T.breakOn sep combined
+          in
+          if T.null after 
+             then -- not present
+                let (m0,m) = maxintersect combined sep
+                in
+                (([m0],False),(T.empty, Pending m sep nextseps))
+             else -- present
+                let unprefixed = T.drop (T.length sep) after
+                    nextstate = case nextseps of
+                        [] -> Done
+                        z:zs -> Pending T.empty z zs
+                in
+                (([before],True),(unprefixed,nextstate))
+                               
+maxintersect = T.Text -> T.Text -> (T.Text,T.Text)
+maxintersect txt sep = 
+    let prefixes = (tail . reverse . tail . T.inits) sep 
+        partialmatches = filter (flip T.isSuffixOf txt) prefixes
+        m = maybe T.empty id (listToMaybe partialmatches)
+    in
+    (T.take (T.lenght combined - T.length m) combined,m)
+        
 unfoldWithState :: (b -> Maybe (a, b)) -> b -> [(a, b)]
 unfoldWithState f = unfoldr (fmap (\t@(_, b) -> (t, b)) . f)
 
