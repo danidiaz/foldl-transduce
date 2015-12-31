@@ -131,6 +131,11 @@ paragraphsUnderTest
 paragraphsUnderTest txt =
     map mconcat (L.fold (folds paragraphs L.list L.list) txt)
 
+sectionsUnderTest
+    :: [T.Text] -> [T.Text] -> [T.Text] 
+sectionsUnderTest stns txt =
+    map mconcat (L.fold (folds (sections stns) L.list L.list) txt)
+
 paragraph01 :: T.Text
 paragraph01 = 
     T.pack 
@@ -219,6 +224,21 @@ tests =
                         ==
                         ignoreLastNewline (paragraphsBaseline (mconcat chunks)))
             ]
+        ],
+        testGroup "sections"
+        [
+            testCaseEq "no separators at all"
+                (map T.pack ["aaabbcc"])
+                (sectionsUnderTest (map T.pack []) (map T.pack ["a","aa","bbc","c"])),
+            testCaseEq "incomplete separator"
+                (map T.pack ["123#_","aa","bb#"])
+                (sectionsUnderTest (map T.pack ["1234","#"]) (map T.pack ["1","23","#_1234aa#b","b#"])),
+            testCaseEq "small chunks"
+                (map T.pack ["0","01","aa","a#bb","c"])
+                (sectionsUnderTest (map T.pack ["_","_","##","##","##"]) (map T.pack ["0","_","0","1_","a","a","#","#a","#","b","b#","#","c"])),
+            testCaseEq "big chunk with multiple seps"
+                (map T.pack ["1x","aa","bb","cc1x","dd"])
+                (sectionsUnderTest (map T.pack (cycle ["12"])) (map T.pack ["1","x12aa12bb12cc1","x1","2dd"]))
         ],
         testGroup "quiesceWith"  
         [
