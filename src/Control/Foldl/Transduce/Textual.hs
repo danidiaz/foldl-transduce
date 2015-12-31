@@ -3,7 +3,7 @@
 -- |
 --
 -- This module has transducers that work on 'Text' and other text-like types.
-module Control.Foldl.Transduce.Textual (
+module Control.Foldl.Transduce.Textual {-# DEPRECATED "Use Control.Foldl.Transduce.Text instead." #-} (
         -- * Splitters
         textualSplit
     ,   textualBreak

@@ -18,7 +18,6 @@ import qualified Data.Text.Lazy as TL
 import qualified Control.Foldl as L
 import Control.Foldl.Transduce
 import Control.Foldl.Transduce.Text
-import Control.Foldl.Transduce.Textual
 
 {- $quickcheck
 

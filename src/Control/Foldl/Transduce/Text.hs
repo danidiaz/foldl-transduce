@@ -22,9 +22,10 @@ module Control.Foldl.Transduce.Text (
     ,   lines
     ,   paragraphs
     ,   sections
-        -- * Re-exports
-        -- $reexports
-    ,   module Control.Foldl.Transduce.Textual
+        -- * Textual
+        -- $textual
+    ,   textualSplit
+    ,   textualBreak
     ) where
 
 import Prelude hiding (lines,words)
@@ -39,12 +40,13 @@ import qualified Data.Text
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T
+import qualified Data.Monoid.Textual as MT
+import qualified Data.Monoid.Null as MN
 import Control.Applicative
 import Control.Monad.Trans.Except
 import Control.Monad.IO.Class
 import Control.Exception.Base 
 import qualified Control.Foldl.Transduce as L
-import Control.Foldl.Transduce.Textual
 import Control.Foldl.Transduce.Internal (Pair(..))
 import qualified Data.List
 import Data.List.Split
@@ -397,11 +399,16 @@ paragraphs = L.Transducer step SkippingAfterStreamStart done
                     ContinuingNonemptyLine
                     (continue [i] outputs)
 
-data SectionsState = 
-      Done
-    | Pending T.Text T.Text [T.Text] -- first is the accumulator
-    deriving (Show)
+{-| 
 
+    Given a (possibly infinite) list of section headings, split the stream into
+    sections and remove the headings. 
+
+>>> map mconcat (L.fold (folds (sections (map T.pack ["#1\n","#2\n"])) L.list L.list) (map T.pack [" #1\naa\n#","2\nbb"]))
+[" ","aa\n","bb"]
+
+    Used with 'L.transduce', it simply removes all headings.
+-}
 sections :: [T.Text] -> L.Transducer T.Text T.Text ()
 sections seps = L.Transducer step (initialstate seps) done 
     where
@@ -426,6 +433,10 @@ continue as (as':| rest) = (as ++ as') :| rest
 separate :: [x] -> NonEmpty [x] -> NonEmpty [x]
 separate = NonEmpty.cons
 
+data SectionsState = 
+      Done
+    | Pending T.Text T.Text [T.Text] -- first is the accumulator
+    deriving (Show)
 
 {-| 		
 
@@ -441,53 +452,83 @@ Just (([""],True),("",Pending "" "nextsep" []))
 >>> splitTextStep (T.pack "xx",Pending (T.pack "bb") (T.pack "bbcc") [])
 Just ((["bbxx"],False),("",Pending "" "bbcc" []))
 
->>> splitTextStep (T.pack "bbc",Pending (T.pack "xxx") (T.pack "bbcccc") [])
-Just ((["bbxx"],False),("",Pending "" "bbcc" []))
+>>> splitTextStep (T.pack "xbb",Pending (T.pack "bbc") (T.pack "bbcccc") [])
+Just ((["bbcx"],False),("",Pending "bb" "bbcccc" []))
 
 -}
-
 splitTextStep 
     :: (T.Text, SectionsState) 
     -> Maybe (([T.Text],Bool), (T.Text, SectionsState))
 splitTextStep (txt, _) | T.null txt           = Nothing
 splitTextStep (txt, Done)                     = Just (([txt],False),(T.empty,Done))
 splitTextStep (txt, Pending acc sep nextseps) = Just $
-    let combined    = acc <> txt
-        combinedlen = T.length combined
-        seplen      = T.length sep
+    let (before,after) = T.breakOn sep (acc <> txt)
     in
-    if combinedlen < seplen
-       then 
-          (([],False),(T.empty,Pending combined sep nextseps)) -- not enough data!
-       else 
-          let (before,after) = T.breakOn sep combined
+    if T.null after 
+       then -- not present
+          let (m0,m) = maxintersect before sep
           in
-          if T.null after 
-             then -- not present
-                let (m0,m) = maxintersect combined sep
-                in
-                (([m0],False),(T.empty, Pending m sep nextseps))
-             else -- present
-                let unprefixed = T.drop (T.length sep) after
-                    nextstate = case nextseps of
-                        [] -> Done
-                        z:zs -> Pending T.empty z zs
-                in
-                (([before],True),(unprefixed,nextstate))
+          (([m0],False),(T.empty, Pending m sep nextseps))
+       else -- present
+          let unprefixed = T.drop (T.length sep) after
+              nextstate = case nextseps of
+                  [] -> Done
+                  z:zs -> Pending T.empty z zs
+          in
+          (([before],True),(unprefixed,nextstate))
                                
-maxintersect = T.Text -> T.Text -> (T.Text,T.Text)
+maxintersect :: T.Text -> T.Text -> (T.Text,T.Text)
 maxintersect txt sep = 
     let prefixes = (tail . reverse . tail . T.inits) sep 
         partialmatches = filter (flip T.isSuffixOf txt) prefixes
         m = maybe T.empty id (listToMaybe partialmatches)
     in
-    (T.take (T.lenght combined - T.length m) combined,m)
+    (T.take (T.length txt - T.length m) txt,m)
         
 unfoldWithState :: (b -> Maybe (a, b)) -> b -> [(a, b)]
 unfoldWithState f = unfoldr (fmap (\t@(_, b) -> (t, b)) . f)
 
 ------------------------------------------------------------------------------
 
-{- $reexports
+{- $textual
+
+    Transducers that work on 'Text' and other text-like types.
 
 -}
+
+{-| 
+
+>>> L.fold (folds (textualSplit (=='.')) L.list L.list) [".","bb.bb","c.c."]
+[[""],["","bb"],["bb","c"],["c"],[""]]
+
+-}
+
+textualSplit :: MT.TextualMonoid m => (Char -> Bool) -> L.Transducer m m ()
+textualSplit predicate = L.Transducer step () done 
+  where
+    step _ txt = case MT.split predicate txt of
+        x:xs -> ((),[x],map (:[]) xs)
+        _ -> error "never happens"
+    done _ = mempty
+
+
+data SplitWhenWhenState = 
+      SplitWhenConditionEncountered 
+    | SplitWhenConditionPending
+
+{-| 		
+
+>>> L.fold (bisect (textualBreak (=='.')) (reify id) ignore L.list) ["aa","bb.bb","cc"]
+["aa","bb"]
+-}
+textualBreak :: MT.TextualMonoid m => (Char -> Bool) -> L.Transducer m m ()
+textualBreak predicate = 
+    L.Transducer step SplitWhenConditionPending done 
+    where
+        step SplitWhenConditionPending (MT.break (const False) predicate -> (i0,i1)) = 
+            if MN.null i1
+               then (SplitWhenConditionPending,[i0],[])
+               else (SplitWhenConditionEncountered,[i0],[[i1]])
+        step SplitWhenConditionEncountered i = 
+               (SplitWhenConditionEncountered,[i],[])
+        done = mempty

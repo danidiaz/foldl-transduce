@@ -1,3 +1,8 @@
+# 0.4.7.0
+
+- Added "sections" splitter.
+- Deprecated Control.Foldl.Transduce.Textual
+
 # 0.4.6.0
 
 - Deprecated Control.Foldl.Transduce.ByteString.IO 
