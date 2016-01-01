@@ -36,8 +36,8 @@ removeComments =
     sectionSplitter = sections (cycle ["{-","-}"])
     ignoreAlternating = Moore $  
         unfold 
-        (\b -> (bool (reify (transduce ignore)) (reify id) b, \_ -> not b)) 
-        True
+        (\ts -> (head ts, \_ -> tail ts)) 
+        (cycle [reify id,reify (transduce ignore)])
 
 main :: IO ()
 main = do
