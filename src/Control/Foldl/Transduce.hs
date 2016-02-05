@@ -774,33 +774,49 @@ groups' :: (ToTransducer s, ToTransductions' t, ToFold f)
         -> f     u v -- ^ auxiliary 'Fold' that aggregates the @u@ values produced for each group
         -> Transduction' a c (r,v) 
 groups' (toTransducer -> Transducer sstep sbegin sdone) 
-        (toTransductions' -> Moore (ReifiedTransduction' t0 :< somemachine)) 
+        (toTransductions' -> Moore (rt0 :< somemachine)) 
+        --(toTransductions' -> Moore (ReifiedTransduction' t0 :< somemachine)) 
         (toFold -> Fold astep abegin adone) 
         somefold 
         =
-    Fold step (Quartet sbegin somemachine abegin (t0 (duplicated somefold))) done 
-      where 
+    Fold step (Quartet sbegin somemachine abegin (Left (rt0,somefold))) done 
+    where 
         step (Quartet sstate machine astate innerfold) i =
-           let 
-               (sstate',oldSplit,newSplits) = sstep sstate i
-               (machine',astate',innerfold') = 
-                   foldl' 
-                   step'
-                   (machine,astate,feed innerfold oldSplit) 
-                   newSplits
+           let (sstate',oldSplit,newSplits) = sstep sstate i
            in
-           Quartet sstate' machine' astate' innerfold' 
+           case (oldSplit,newSplits) of
+                ([],[]) -> 
+                    Quartet sstate' machine astate innerfold -- pass innerfold untouched
+                _ -> 
+                    let actualinnerfold = case innerfold of
+                            Left (ReifiedTransduction' t0,pristine) -> t0 (duplicated pristine)
+                            Right touched -> touched
+                        (machine',astate',innerfold') = 
+                           foldl' 
+                           step'
+                           (machine,astate,feed actualinnerfold oldSplit) 
+                           newSplits
+                    in
+                    Quartet sstate' machine' astate' (Right innerfold')
         
         done (Quartet sstate machine astate innerfold) = 
-            let 
-                (s,oldSplit,newSplits) = sdone sstate
-                (_,astate',innerfold') = 
-                   foldl' 
-                   step'
-                   (machine,astate,feed innerfold oldSplit) 
-                   newSplits
-                (u,finalfold) = extract innerfold'
-            in  ((s,adone (astep astate' u)),extract finalfold)
+            let (s,oldSplit,newSplits) = sdone sstate
+            in
+            case (oldSplit,newSplits,innerfold) of
+                ([],[],Left (_,pristine)) -> 
+                    ((s,adone astate), extract pristine)
+                _ ->     
+                    let actualinnerfold = case innerfold of
+                            Left (ReifiedTransduction' t0,pristine) -> t0 (duplicated pristine)
+                            Right touched -> touched
+                        (_,astate',innerfold') = 
+                           foldl' 
+                           step'
+                           (machine,astate,feed actualinnerfold oldSplit) 
+                           newSplits
+                        (u,finalfold) = extract innerfold'
+                    in  
+                    ((s,adone (astep astate' u)),extract finalfold)
 
         step' (machine_,astate,innerfold_) somesplit = 
            let (u,resetted,nextmachine) = reset machine_ innerfold_
@@ -812,7 +828,6 @@ groups' (toTransducer -> Transducer sstep sbegin sdone)
             let (u,nextfold) = fdone fstate
                 ReifiedTransduction' t1 :< nextmachine = machine u
             in  (u,t1 (duplicated nextfold),nextmachine)
-
 
 {-| Monadic version of 'groups'.		
 
