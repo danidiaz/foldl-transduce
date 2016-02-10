@@ -754,6 +754,8 @@ bisect :: (ToTransducer s, ToTransductions' h, ToTransductions' t)
        -> Transduction a c
 bisect sp t1 t2 = groups sp (moveHead t1 t2)
 
+data StrictSum a b = Left' !a | Right' !b
+
 {-| Generalized version of 'groups' that preserves the return value of the
     'Transducer'.
 
@@ -775,11 +777,10 @@ groups' :: (ToTransducer s, ToTransductions' t, ToFold f)
         -> Transduction' a c (r,v) 
 groups' (toTransducer -> Transducer sstep sbegin sdone) 
         (toTransductions' -> Moore (rt0 :< somemachine)) 
-        --(toTransductions' -> Moore (ReifiedTransduction' t0 :< somemachine)) 
         (toFold -> Fold astep abegin adone) 
         somefold 
         =
-    Fold step (Quartet sbegin somemachine abegin (Left (rt0,somefold))) done 
+    Fold step (Quartet sbegin somemachine abegin (Left' (rt0,somefold))) done 
     where 
         step (Quartet sstate machine astate innerfold) i =
            let (sstate',oldSplit,newSplits) = sstep sstate i
@@ -789,26 +790,26 @@ groups' (toTransducer -> Transducer sstep sbegin sdone)
                     Quartet sstate' machine astate innerfold -- pass innerfold untouched
                 _ -> 
                     let actualinnerfold = case innerfold of
-                            Left (ReifiedTransduction' t0,pristine) -> t0 (duplicated pristine)
-                            Right touched -> touched
+                            Left' (ReifiedTransduction' t0,pristine) -> t0 (duplicated pristine)
+                            Right' touched -> touched
                         (machine',astate',innerfold') = 
                            foldl' 
                            step'
                            (machine,astate,feed actualinnerfold oldSplit) 
                            newSplits
                     in
-                    Quartet sstate' machine' astate' (Right innerfold')
+                    Quartet sstate' machine' astate' (Right' innerfold')
         
         done (Quartet sstate machine astate innerfold) = 
             let (s,oldSplit,newSplits) = sdone sstate
             in
             case (oldSplit,newSplits,innerfold) of
-                ([],[],Left (_,pristine)) -> 
+                ([],[],Left' (_,pristine)) -> 
                     ((s,adone astate), extract pristine)
                 _ ->     
                     let actualinnerfold = case innerfold of
-                            Left (ReifiedTransduction' t0,pristine) -> t0 (duplicated pristine)
-                            Right touched -> touched
+                            Left' (ReifiedTransduction' t0,pristine) -> t0 (duplicated pristine)
+                            Right' touched -> touched
                         (_,astate',innerfold') = 
                            foldl' 
                            step'
@@ -859,30 +860,46 @@ groupsM' :: (Monad m, ToTransducerM m s, ToTransductionsM' m t, ToFoldM m f)
          -> f     u v 
          -> TransductionM' m a c (r,v) 
 groupsM' (toTransducerM -> TransducerM sstep sbegin sdone) 
-         (toTransductionsM' -> MooreM (ReifiedTransductionM' t0 :< somemachine)) 
+         (toTransductionsM' -> MooreM (rt0 :< somemachine)) 
          (toFoldM -> FoldM astep abegin adone) 
          somefold 
          =
     FoldM step 
           (do sbegin' <- sbegin
               abegin' <- abegin
-              return (Quartet sbegin' somemachine abegin' (t0 (duplicated somefold))))
+              return (Quartet sbegin' somemachine abegin' (Left' (rt0,somefold))))
           done        
     where
         step (Quartet sstate machine astate innerfold) i = do
             (sstate',oldSplit, newSplits) <- sstep sstate i 
-            innerfold' <- feed innerfold oldSplit
-            (machine',astate',innerfold'') <- foldlM step' (machine,astate,innerfold') newSplits
-            return $! Quartet sstate' machine' astate' innerfold'' 
+            case (oldSplit,newSplits) of 
+                ([],[]) -> 
+                    return $! Quartet sstate' machine astate innerfold -- pass innerfold untouched
+                _       -> do
+                    let actualinnerfold = case innerfold of
+                            Left' (ReifiedTransductionM' t0,pristine) -> t0 (duplicated pristine)
+                            Right' touched -> touched
+                    innerfold' <- feed actualinnerfold oldSplit
+                    (machine',astate',innerfold'') <- foldlM step' (machine,astate,innerfold') newSplits
+                    return $! Quartet sstate' machine' astate' (Right' innerfold'')
 
         done (Quartet sstate machine astate innerfold) = do
             (s,oldSplit,newSplits) <- sdone sstate
-            innerfold' <- feed innerfold oldSplit
-            (_,astate',innerfold'') <- foldlM step' (machine,astate,innerfold') newSplits
-            (u,finalfold) <- L.foldM innerfold'' []
-            v <- adone =<< astep astate' u
-            r <- L.foldM finalfold []
-            return ((s,v),r)
+            case (oldSplit,newSplits,innerfold) of 
+              ([],[],Left' (_,pristine)) -> do
+                  a <- adone astate
+                  p <- L.foldM pristine []
+                  return ((s,a),p)
+              _ -> do
+                  let actualinnerfold = case innerfold of
+                          Left' (ReifiedTransductionM' t0,pristine) -> t0 (duplicated pristine)
+                          Right' touched -> touched
+                  innerfold' <- feed actualinnerfold oldSplit
+                  (_,astate',innerfold'') <- foldlM step' (machine,astate,innerfold') newSplits
+                  (u,finalfold) <- L.foldM innerfold'' []
+                  v <- adone =<< astep astate' u
+                  r <- L.foldM finalfold []
+                  return ((s,v),r)
 
         step' (machine,astate,innerfold) is = do
             (u,innerfold',machine') <- reset machine innerfold 
