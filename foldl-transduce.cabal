@@ -40,11 +40,8 @@ Library
         monoid-subclasses == 0.4.*         
     Exposed-Modules:
         Control.Foldl.Transduce,
-        Control.Foldl.Transduce.Text,
-        Control.Foldl.Transduce.Textual,
         Control.Foldl.Transduce.ByteString,
-        Control.Foldl.Transduce.ByteString.IO,
-        Control.Foldl.Transduce.Internal
+        Control.Foldl.Transduce.Text
     GHC-Options: -O2 -Wall
 
 test-suite doctests

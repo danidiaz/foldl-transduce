@@ -47,7 +47,6 @@ import Control.Monad.Trans.Except
 import Control.Monad.IO.Class
 import Control.Exception.Base 
 import qualified Control.Foldl.Transduce as L
-import Control.Foldl.Transduce.Internal (Pair(..))
 import qualified Data.List
 import Data.List.Split
 import qualified Data.List.Split
@@ -65,6 +64,8 @@ import qualified Data.List.NonEmpty as NonEmpty
 >>> import Control.Foldl.Transduce
 
 -}
+
+data Pair a b = Pair !a !b
 
 {-| Builds a decoding 'Transducer' out of a stream-oriented decoding function
     from "Data.Text.Encoding" and an error handler from

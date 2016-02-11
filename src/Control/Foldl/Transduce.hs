@@ -93,9 +93,6 @@ module Control.Foldl.Transduce (
     ,   module Data.Functor.Extend
     ,   module Control.Foldl
     ,   module Control.Comonad.Cofree
-        -- * Deprecated
-    ,   splitWhen
-    ,   quiesceWith
     ) where
 
 import Prelude hiding (split,splitAt,break)
@@ -121,7 +118,6 @@ import Control.Comonad
 import Control.Comonad.Cofree 
 import Control.Foldl (Fold(..),FoldM(..))
 import qualified Control.Foldl as L
-import Control.Foldl.Transduce.Internal (Pair(..),Quartet(..),fst3)
 
 {- $setup
 
@@ -152,6 +148,15 @@ instance Monad m => Extend (FoldM m a) where
     duplicated (FoldM step begin done) = 
         FoldM step begin (\x -> return $! FoldM step (return x) done)
     {-# INLINABLE duplicated #-}
+
+------------------------------------------------------------------------------
+
+data Pair a b = Pair !a !b
+
+data Quartet a b c d = Quartet !a !b !c !d
+
+fst3 :: (a,b,c) -> a
+fst3 (x,_,_) = x
 
 ------------------------------------------------------------------------------
 
@@ -334,7 +339,7 @@ instance Monad m => ToFoldM m Fold where
 >>> L.fold (transduce (Transducer (\_ i -> ((),[i],[])) () (\_ -> ('r',[],[]))) L.list) [1..7]
 [1,2,3,4,5,6,7]
 -}
-transduce :: ToTransducer t => t i o s -> Transduction i o 
+transduce :: ToTransducer t => t i o () -> Transduction i o 
 transduce t = fmap snd . (transduce' t)
 
 {-| Generalized version of 'transduce' that preserves the return value of
@@ -360,7 +365,7 @@ transduce' (toTransducer -> Transducer wstep wstate wdone) (Fold fstep fstate fd
 {-| Like 'transduce', but works on monadic 'Fold's.		
 
 -}
-transduceM :: (Monad m, ToTransducerM m t)  => t i o s -> TransductionM m i o 
+transduceM :: (Monad m, ToTransducerM m t)  => t i o () -> TransductionM m i o 
 transduceM t = fmap snd . (transduceM' t)
 
 {-| Like 'transduce'', but works on monadic 'Fold's.		
@@ -554,21 +559,6 @@ quiesce (FoldM step initial done) =
                     Left e -> return (Left e)
                     Right r -> return (Right r)
 
---{-| Generalized version of 'quiesce' to turn a fallible 'FoldM' into another
---    that starts a "fallback fold" when it encounters an error.
---
---    "Start folding this way, if you encounter an error, start folding this 
---    other way".                               
---
--- >>> L.foldM (quiesceWith (L.generalize L.length) (FoldM (\_ _-> throwE ()) (return ()) (\_ -> throwE ()))) [1..7]
--- Left ((),7)
----}
-{-# DEPRECATED quiesceWith "The signature of this function will change." #-}
-quiesceWith :: (Functor m,Monad m) => FoldM m a v -> FoldM (ExceptT e m) a r -> FoldM m a (Either (e,v) r)
-quiesceWith fallback original = hoistFold (fmap (either absurd id) . runExceptT) (getFallible (do
-    e <- Fallible (fmap Right original)
-    Fallible (hoistFold lift (fmap (\x -> Left (e,x)) fallback))))
-
 newtype Fallible m r i e = Fallible { getFallible :: FoldM (ExceptT e m) i r }
 
 bindFallible :: (Functor m,Monad m) => Fallible m r i e -> (e -> Fallible m r i e') -> Fallible m r i e'
@@ -733,7 +723,7 @@ instance (m ~ m', Monad m') => ToTransductionsM' m (ReifiedTransductionM' m') wh
 "0aa1bb2cc3dd"
 -}
 groups :: (ToTransducer s, ToTransductions' t) 
-       => s a b r  -- ^ 'Transducer' working as a splitter.
+       => s a b () -- ^ 'Transducer' working as a splitter.
        -> t b c () -- ^ infinite list of transductions
        -> Transduction a c 
 groups splitter transductions oldfold = 
@@ -748,7 +738,7 @@ groups splitter transductions oldfold =
 "bbccdd"
 -}
 bisect :: (ToTransducer s, ToTransductions' h, ToTransductions' t)
-       => s a b r -- ^ 'Transducer' working as a splitter.
+       => s a b () -- ^ 'Transducer' working as a splitter.
        -> h b c () -- ^ Machine to process the first group
        -> t b c () -- ^ Machine to process the second and subsequent groups
        -> Transduction a c
@@ -834,7 +824,7 @@ groups' (toTransducer -> Transducer sstep sbegin sdone)
 
 -}
 groupsM :: (Monad m, ToTransducerM m s, ToTransductionsM' m t)
-               => s a b r -- ^
+               => s a b () -- ^
                -> t b c ()
                -> TransductionM m a c
 groupsM splitter transductions oldfold = 
@@ -845,7 +835,7 @@ groupsM splitter transductions oldfold =
 
 -}
 bisectM :: (Monad m, ToTransducerM m s, ToTransductionsM' m h, ToTransductionsM' m t)
-               => s a b r -- ^
+               => s a b () -- ^
                -> h b c ()
                -> t b c ()
                -> TransductionM m a c
@@ -924,7 +914,7 @@ groupsM' (toTransducerM -> TransducerM sstep sbegin sdone)
 [6,15,7]
 -}
 folds :: (ToTransducer t, ToFold f) 
-      => t a b s -- ^ 'Transducer' working as a splitter.
+      => t a b () -- ^ 'Transducer' working as a splitter.
       -> f b c 
       -> Transduction a c
 folds splitter (toFold -> f) = groups splitter (fmap (const ()) (condense f))
@@ -941,13 +931,13 @@ folds' :: (ToTransducer t, ToFold f)
 folds' splitter (toFold -> innerfold) somefold = 
     fmap (bimap fst id) (groups' splitter innertrans unit somefold)
     where
-    innertrans = reify' $ \x -> fmap ((,) ()) (transduce (condense innerfold) x)
+    innertrans = reify' $ \x -> fmap ((,) () . snd) (transduce' (condense innerfold) x)
 
 {-| Monadic version of 'folds'.		
 
 -}
 foldsM :: (Applicative m, Monad m, ToTransducerM m t, ToFoldM m f) 
-       => t a b s -- ^
+       => t a b () -- ^
        -> f b c 
        -> TransductionM m a c
 foldsM splitter (toFoldM -> f) = groupsM splitter (fmap (const ()) (condenseM f))
@@ -962,7 +952,7 @@ foldsM' :: (Applicative m,Monad m, ToTransducerM m t, ToFoldM m f)
 foldsM' splitter (toFoldM -> innerfold) somefold = 
     fmap (bimap fst id) (groupsM' splitter innertrans unit somefold)
     where
-    innertrans = reifyM' $ \x -> fmap ((,) ()) (transduceM (condenseM innerfold) x)
+    innertrans = reifyM' $ \x -> fmap ((,) () . snd) (transduceM' (condenseM innerfold) x)
 
 ------------------------------------------------------------------------------
 
@@ -1134,8 +1124,3 @@ chunkedStripPrefix (filter (not . NM.null) . toList -> chunks) =
 {- $reexports
 
 -}
-
-
-{-# DEPRECATED splitWhen "use break instead" #-}
-splitWhen :: (a -> Bool) -> Transducer a a ()
-splitWhen = break
