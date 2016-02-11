@@ -48,8 +48,6 @@ import Control.Monad.IO.Class
 import Control.Exception.Base 
 import qualified Control.Foldl.Transduce as L
 import qualified Data.List
-import Data.List.Split
-import qualified Data.List.Split
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NonEmpty
 

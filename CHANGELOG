@@ -4,7 +4,6 @@
   Now, no groups are found for empty streams.
 - Made some type signatures a bit more strict.
 - Eliminated previously deprecated functions and modules.
-- Deprecated a few more.
 
 # 0.4.7.0
 

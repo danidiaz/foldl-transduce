@@ -88,6 +88,7 @@ module Control.Foldl.Transduce (
     ,   Fallible(..)
     ,   ToFold(..)
     ,   ToFoldM(..)
+        -- * Deprecated
         -- * Re-exports
         -- $reexports
     ,   module Data.Functor.Extend
@@ -116,7 +117,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Comonad
 import Control.Comonad.Cofree 
-import Control.Foldl (Fold(..),FoldM(..))
+import Control.Foldl (Fold(..),FoldM(..),hoists)
 import qualified Control.Foldl as L
 
 {- $setup
@@ -530,9 +531,10 @@ hoistTransducer g (TransducerM step begin done) = TransducerM (\s i -> g (step s
 
 {-| Changes the base monad used by a 'FoldM'.		
 
+    Another name for 'Control.Foldl.hoists'.
 -}
 hoistFold :: Monad m => (forall a. m a -> n a) -> FoldM m i r -> FoldM n i r 
-hoistFold g (FoldM step begin done) = FoldM (\s i -> g (step s i)) (g begin) (g . done)
+hoistFold = Control.Foldl.hoists
 
 {-| Turn a 'FoldM' that fails abruptly into one that encodes the error into
     its return value.
