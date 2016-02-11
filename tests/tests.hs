@@ -161,7 +161,7 @@ tests =
         testGroup "chunksOf" 
         [
             testCaseEq "emptyList3"
-                ([[]]::[[Int]])
+                ([]::[[Int]])
                 (L.fold (folds (chunksOf 3) L.list L.list) [])
             ,
             testCaseEq "size1" 
@@ -199,9 +199,8 @@ tests =
                 testProperty "quickcheck1" (\chunks -> -- list of words 
                     let tchunks = fmap getWord chunks 
                     in
-                    (case TL.words (TL.fromChunks tchunks) of
-                       [] -> [mempty]
-                       x -> x) ==
+                    TL.words (TL.fromChunks tchunks)
+                    ==
                     (fmap TL.fromChunks (L.fold (folds words L.list L.list) tchunks)))
             ]
         ],
