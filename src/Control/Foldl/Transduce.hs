@@ -337,7 +337,7 @@ instance Monad m => ToFoldM m Fold where
 {-| Apply a 'Transducer' to a 'Fold', discarding the return value of the
     'Transducer'.		
 
->>> L.fold (transduce (Transducer (\_ i -> ((),[i],[])) () (\_ -> ('r',[],[]))) L.list) [1..7]
+>>> L.fold (transduce (Transducer (\_ i -> ((),[i],[])) () (\_ -> ((),[],[]))) L.list) [1..7]
 [1,2,3,4,5,6,7]
 -}
 transduce :: ToTransducer t => t i o () -> Transduction i o 
@@ -1073,7 +1073,7 @@ break predicate =
 {-| Puts the last element of the input stream (if it exists) in a separate
     group.
 
->>> L.fold (bisect splitLast (reify id) ignore L.list) [1..5]
+>>> L.fold (bisect (void splitLast) (reify id) ignore L.list) [1..5]
 [1,2,3,4]
 -}
 splitLast :: Transducer a a (Maybe a)

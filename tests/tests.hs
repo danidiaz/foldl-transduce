@@ -238,22 +238,6 @@ tests =
             testCaseEq "big chunk with multiple seps"
                 (map T.pack ["1x","aa","bb","cc1x","dd"])
                 (sectionsUnderTest (map T.pack (cycle ["12"])) (map T.pack ["1","x12aa12bb12cc1","x1","2dd"]))
-        ],
-        testGroup "quiesceWith"  
-        [
-            testCase "collectAfterFailure" (do
-               let
-                  foldthatfails = 
-                      transduceM utf8E (L.generalize L.list)
-                  inputs = 
-                      map fromString ["invalid \xc3\x28 sequence","xxx","zzz","___"]
-                  fallbackfold =
-                      bisectM (chunkedSplitAt 4) (reifyM id) ignore (L.generalize L.list)
-               r <- L.foldM (quiesceWith fallbackfold foldthatfails) inputs 
-               assertEqual 
-                   mempty 
-                   (Left ('C',4))
-                   (first (bimap (head . show) (SFM.length . mconcat)) r))
-        ]   
+        ]
     ]
 
