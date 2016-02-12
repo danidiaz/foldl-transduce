@@ -1,5 +1,5 @@
 Name: foldl-transduce
-Version: 0.5.0.0
+Version: 0.5.1.0
 Cabal-Version: >=1.8.0.2
 Build-Type: Simple
 License: BSD3
@@ -28,13 +28,13 @@ Library
         text          >= 0.11.2.0          ,
         transformers  >= 0.2.0.0           ,
         containers                         ,
-        bifunctors    == 5.*               ,
-        profunctors   == 5.*               ,
+        bifunctors    >= 5                 ,
+        profunctors   >= 5                 ,
         semigroups    >= 0.18              ,
         semigroupoids >= 5.0               ,
         foldl         >= 1.1.5             ,
-        comonad       == 4.*               ,
-        free          == 4.*               ,         
+        comonad       >= 4                 ,
+        free          >= 4                 ,         
         void          >= 0.6               ,
         split         >= 0.2.2             ,
         monoid-subclasses == 0.4.*         
@@ -52,7 +52,7 @@ test-suite doctests
 
   build-depends:
         base          >= 4.4 && < 5
-      , free          == 4.*
+      , free          >= 4
       , doctest       >= 0.10.1
 
 test-suite tests
@@ -66,7 +66,7 @@ test-suite tests
         tasty >= 0.10.1.1   ,
         tasty-hunit >= 0.9.2,
         tasty-quickcheck >= 0.8.3.2, 
-        monoid-subclasses == 0.4.*,
+        monoid-subclasses >= 0.4,
         split         >= 0.2.2,
         foldl               ,
         foldl-transduce
