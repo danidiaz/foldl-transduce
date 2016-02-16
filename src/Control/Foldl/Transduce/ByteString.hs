@@ -1,4 +1,4 @@
-﻿{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
