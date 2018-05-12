@@ -102,7 +102,7 @@ utf8 onDecodeError =
 ["across ","\9731 boundaries"]
 
 >>> L.fold (transduce utf8lenient L.list) (map fromString ["invalid \xc3\x28 sequence"])
-["invalid \65533 sequence"]
+["invalid \65533( sequence"]
 
 >>> L.fold (transduce utf8lenient L.list) (map fromString ["incomplete \xe2"])
 ["incomplete ","\65533"]
@@ -115,7 +115,7 @@ utf8lenient = utf8 T.lenientDecode
     __/BEWARE!/__ 
 
 >>> L.fold (transduce utf8strict L.list) (map fromString ["invalid \xc3\x28 sequence"])
-*** Exception: Cannot decode byte '\x28': Data.Text.Internal.Encoding.streamDecodeUtf8With: Invalid UTF-8 stream
+*** Exception: Cannot decode byte '\xc3': Data.Text.Internal.Encoding.streamDecodeUtf8With: Invalid UTF-8 stream
 
 >>> L.fold (transduce utf8strict L.list) (map fromString ["incomplete \xe2"])
 *** Exception: Cannot decode input: leftovers
@@ -156,7 +156,7 @@ decoderE next = L.TransducerM step (return (Pair mempty next')) done
     'Control.Monad.Trans.Except' to communicate the error.        
 
 >>> runExceptT $ L.foldM (transduceM utf8E (L.generalize L.list)) (map fromString ["invalid \xc3\x28 sequence"])
-Left Cannot decode byte '\x28': Data.Text.Internal.Encoding.streamDecodeUtf8With: Invalid UTF-8 stream
+Left Cannot decode byte '\xc3': Data.Text.Internal.Encoding.streamDecodeUtf8With: Invalid UTF-8 stream
 
 >>> runExceptT $ L.foldM (transduceM utf8E (L.generalize L.list)) (map fromString ["incomplete \xe2"])
 Left Cannot decode input: leftovers

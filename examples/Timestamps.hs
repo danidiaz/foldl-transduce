@@ -39,7 +39,7 @@ main =
     withEncodeDecode = 
           transduceM utf8lenient 
         . addTimestamps 
-        . L.premapM T.encodeUtf8
+        . L.premapM (return T.encodeUtf8)
         . toHandle
     addTimestamps = groupsM lines (surroundIO timestamp (return ["\n"]))
 

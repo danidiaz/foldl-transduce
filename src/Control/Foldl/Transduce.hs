@@ -607,7 +607,7 @@ instance (Functor m,Monad m) => Applicative (Fallible m r i) where
 
 instance (Functor m, Monad m) => Profunctor (Fallible m r) where
     lmap f (Fallible fallible) = 
-        Fallible (L.premapM f fallible)
+        Fallible (L.premapM (return . f) fallible)
 
     rmap g (Fallible fallible) = 
         Fallible (hoistFold (withExceptT g) fallible)
