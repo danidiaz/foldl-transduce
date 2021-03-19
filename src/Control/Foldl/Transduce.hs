@@ -132,15 +132,7 @@ import qualified Control.Foldl as L
 
 ------------------------------------------------------------------------------
 
-#if !(MIN_VERSION_foldl(1,1,2))
-instance Comonad (Fold a) where
-    extract (Fold _ begin done) = done begin
-    {-# INLINABLE extract #-}
-
-    duplicate (Fold step begin done) = Fold step begin (\x -> Fold step x done)
-    {-# INLINABLE duplicate #-}
-#endif
-
+#if !(MIN_VERSION_foldl(1,4,12))
 instance Extend (Fold a) where
     duplicated f = duplicate f
     {-# INLINABLE duplicated #-}
@@ -149,6 +141,7 @@ instance Monad m => Extend (FoldM m a) where
     duplicated (FoldM step begin done) = 
         FoldM step begin (\x -> return $! FoldM step (return x) done)
     {-# INLINABLE duplicated #-}
+#endif
 
 ------------------------------------------------------------------------------
 
